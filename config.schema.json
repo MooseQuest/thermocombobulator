@@ -1,0 +1,64 @@
+{
+  "pluginAlias": "Thermocombobulator",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Fuse heat, cool, fans, and humidity devices into one virtual central-climate zone per room. Define each zone's sensors and member devices below; deep device/adapter config is easiest in the JSON config editor — see the README.",
+  "footerDisplay": "Docs & examples: https://github.com/moosequest/thermocombobulator",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "Thermocombobulator",
+        "required": true
+      },
+      "smartThingsToken": {
+        "title": "SmartThings token (shared)",
+        "type": "string",
+        "description": "Optional. Used by any 'smartthings' device adapters that don't set their own token.",
+        "x-schema-form": { "type": "password" }
+      },
+      "pollIntervalSeconds": {
+        "title": "Poll interval (seconds)",
+        "type": "integer",
+        "default": 30,
+        "minimum": 5,
+        "description": "How often each zone re-reads sensors and re-evaluates its devices."
+      },
+      "zones": {
+        "title": "Zones",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "title": "Zone name", "type": "string", "required": true },
+            "control": {
+              "title": "Control",
+              "type": "object",
+              "properties": {
+                "defaultMode": { "title": "Default mode", "type": "string", "default": "off", "oneOf": [
+                  { "title": "Off", "enum": ["off"] },
+                  { "title": "Heat", "enum": ["heat"] },
+                  { "title": "Cool", "enum": ["cool"] },
+                  { "title": "Auto", "enum": ["auto"] }
+                ] },
+                "tempBandC": { "title": "Temp hysteresis band (°C)", "type": "number", "default": 0.5 },
+                "supplementalDeltaC": { "title": "Supplemental-heat delta (°C)", "type": "number", "default": 2 },
+                "circulateFans": { "title": "Circulate fans during heat/cool", "type": "boolean", "default": false },
+                "freeCoolingMarginC": { "title": "Free-cooling margin (°C, 0=off)", "type": "number", "default": 0 },
+                "humidityTarget": { "title": "Target humidity (%)", "type": "number" },
+                "humidityBandPct": { "title": "Humidity band (%)", "type": "number", "default": 5 }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "layout": [
+    "name",
+    { "type": "section", "title": "Advanced", "expandable": true, "items": ["smartThingsToken", "pollIntervalSeconds"] },
+    { "key": "zones", "type": "array", "title": "Zones", "items": ["zones[].name", "zones[].control.defaultMode", "zones[].control.tempBandC", "zones[].control.supplementalDeltaC", "zones[].control.circulateFans", "zones[].control.freeCoolingMarginC", "zones[].control.humidityTarget", "zones[].control.humidityBandPct"] }
+  ]
+}

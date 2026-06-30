@@ -1,0 +1,45 @@
+{
+  "platform": "Thermocombobulator",
+  "name": "Thermocombobulator",
+  "smartThingsToken": "your-smartthings-pat-here",
+  "pollIntervalSeconds": 30,
+  "zones": [
+    {
+      "name": "Rear Bedroom",
+      "control": {
+        "defaultMode": "auto",
+        "tempBandC": 0.5,
+        "supplementalDeltaC": 2,
+        "circulateFans": true,
+        "freeCoolingMarginC": 2,
+        "humidityTarget": 45,
+        "humidityBandPct": 5
+      },
+      "sensors": {
+        "temperature": { "adapter": { "type": "smartthings", "deviceId": "ST-TEMP-SENSOR-ID", "capability": "temperatureMeasurement" } },
+        "humidity": { "adapter": { "type": "smartthings", "deviceId": "ST-HUMIDITY-SENSOR-ID", "capability": "relativeHumidityMeasurement" } },
+        "outdoorTemperature": { "adapter": { "type": "http", "readUrl": "https://api.example.com/weather", "readJsonPath": "main.temp" } }
+      },
+      "devices": {
+        "heat": [
+          { "name": "Mysa Baseboard", "supportsSetpoint": true, "adapter": { "type": "smartthings", "deviceId": "MYSA-DEVICE-ID", "capability": "switch" } }
+        ],
+        "heatSupplemental": [
+          { "name": "Space Heater (smart plug)", "adapter": { "type": "http", "onUrl": "http://10.12.51.50/relay/0?turn=on", "offUrl": "http://10.12.51.50/relay/0?turn=off" } }
+        ],
+        "cool": [
+          { "name": "Midea Window AC", "adapter": { "type": "command", "onCommand": "midea-cli set MYAC power on", "offCommand": "midea-cli set MYAC power off" } }
+        ],
+        "fan": [
+          { "name": "Circulation Fan", "adapter": { "type": "http", "onUrl": "http://10.12.51.51/on", "offUrl": "http://10.12.51.51/off" } }
+        ],
+        "humidify": [
+          { "name": "Levoit Humidifier", "adapter": { "type": "command", "onCommand": "vesync on humidifier", "offCommand": "vesync off humidifier" } }
+        ],
+        "dehumidify": [
+          { "name": "Govee Dehumidifier", "adapter": { "type": "command", "onCommand": "govee on dehumidifier", "offCommand": "govee off dehumidifier" } }
+        ]
+      }
+    }
+  ]
+}
