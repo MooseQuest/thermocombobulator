@@ -95,25 +95,35 @@ class UiServer extends HomebridgePluginUiServer {
     if (!user || !password) throw new Error('Midea (MSmartHome) email and password are required.');
     const bin = path.join(__dirname, '..', 'node_modules', '.bin', 'midea-discover');
     const cmd = `${JSON.stringify(process.execPath)} ${JSON.stringify(bin)} -U ${JSON.stringify(user)} -P ${JSON.stringify(password)}`;
-    const stdout = await new Promise((resolve, reject) => {
-      exec(cmd, { timeout: 90000, maxBuffer: 1 << 20 }, (err, out, errout) =>
-        (out && out.length) ? resolve(out) : reject(new Error(errout || (err && err.message) || 'no output')));
+    const out = await new Promise((resolve, reject) => {
+      exec(cmd, { timeout: 60000, maxBuffer: 1 << 20 }, (err, so, se) => {
+        const combined = `${so || ''}${se || ''}`;
+        combined.trim() ? resolve(combined) : reject(new Error((err && err.message) || 'midea-discover produced no output'));
+      });
     });
-    // The CLI prints one JSON object per discovered appliance; collect them defensively.
+    console.log(`[thermocombobulator-ui] midea-discover output:\n${out.slice(0, 1500)}`);
+
+    // midea-discover prints a human-readable block per appliance: "- Id: …", "- Authentication Key: …", etc.
     const devices = [];
-    for (const m of stdout.matchAll(/\{[\s\S]*?\}/g)) {
-      try {
-        const o = JSON.parse(m[0]);
-        const id = o.id || o.deviceId; const host = o.host || o.ip || o.address;
-        const token = o.token; const key = o.key;
-        if (id && token && key) devices.push({
-          id, name: o.name || `Midea ${String(id).slice(-4)}`, model: o.type || 'Midea A/C',
-          role: 'cool',
+    const g = (b, re) => (re.exec(b)?.[1] || '').trim();
+    for (const b of out.split(/Appliance\s+\d+:/i).slice(1)) {
+      const id = g(b, /-\s*Id:\s*(.+)/i);
+      const host = g(b, /-\s*Host:\s*(.+)/i);
+      const type = g(b, /-\s*Appliance Type:\s*(.+)/i);
+      const key = g(b, /-\s*Authentication Key:\s*(.+)/i);
+      const token = g(b, /-\s*Authentication Token:\s*(.+)/i);
+      if (id && key && token && !/no midea cloud|error|invalid/i.test(key)) {
+        devices.push({
+          id, name: `Midea ${type || 'A/C'} ${String(id).slice(-4)}`, model: type || 'Midea A/C', role: 'cool',
           config: { type: 'midea', host, deviceId: id, token, key, mode: 'cool' },
         });
-      } catch { /* skip non-JSON lines */ }
+      }
     }
-    if (!devices.length) throw new Error('No Midea devices parsed. Raw output:\n' + stdout.slice(0, 800));
+    if (!devices.length) {
+      const found = /Found\s+(\d+)\s+appliance/i.exec(out)?.[1];
+      if (found === '0') throw new Error('No Midea A/Cs found on the local network — the A/C and Homebridge must be on the same Wi-Fi/subnet.');
+      throw new Error('Found Midea appliance(s) but could not read their credentials (login may have failed). Check the log for the raw output.');
+    }
     return devices;
   }
 
