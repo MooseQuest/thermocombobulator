@@ -38,14 +38,18 @@ class UiServer extends HomebridgePluginUiServer {
     catch { throw new Error("Install 'mysa-js-sdk' on the Homebridge server to onboard Mysa."); }
     const client = new MysaApiClient();
     await client.login(email, password);
-    const devices = await client.getDevices();
-    return Object.entries(devices).map(([id, d]) => ({
-      id,
-      name: d.Name || d.name || `Mysa ${id.slice(-4)}`,
-      model: d.Model || d.model || 'Mysa Thermostat',
-      role: 'heat',
-      config: { type: 'mysa', deviceId: id, email, password },
-    }));
+    const raw = await client.getDevices();
+    // The SDK wraps the map in a `DevicesObj` (also seen as `Devices`); descend into it.
+    const devMap = (raw && typeof raw === 'object' && (raw.DevicesObj || raw.Devices || raw.devices)) || raw || {};
+    return Object.entries(devMap)
+      .filter(([, d]) => d && typeof d === 'object')
+      .map(([id, d]) => ({
+        id: d.Id || d.id || id,
+        name: d.Name || d.name || d.RoomName || `Mysa ${String(id).slice(-4)}`,
+        model: d.Model || d.model || 'Mysa Thermostat',
+        role: 'heat',
+        config: { type: 'mysa', deviceId: d.Id || d.id || id, email, password },
+      }));
   }
 
   // --- Midea: run the bundled midea-discover CLI, parse devices (host/id/token/key) ---
