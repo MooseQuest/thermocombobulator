@@ -1,7 +1,7 @@
 {
   "displayName": "Thermocombobulator",
   "name": "homebridge-thermocombobulator",
-  "version": "0.11.11",
+  "version": "0.11.12",
   "description": "Fuse baseboard heat, window A/C, space heaters, fans, and humidifiers into one virtual central-climate zone for HomeKit — with smart interlocks.",
   "license": "MIT",
   "author": "Kristerpher Henderson (MooseQuest)",

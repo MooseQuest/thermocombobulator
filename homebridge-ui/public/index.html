@@ -281,10 +281,18 @@
         res.innerHTML = `<p class="muted" style="margin-top:12px">Pick your device:</p>
           <div class="pick">${devices.map((d, i) => `<label><input type="radio" name="d${zi}" value="${i}" ${i ? '' : 'checked'}> <b>${d.name}</b> <span class="muted">${d.model || ''}</span></label>`).join('')}</div>
           ${jobChecks(zi, [devices[0].role || 'heat'])}
+          ${hapModeOptions(zi, devices)}
           <button class="big primary" id="pick-${zi}">Add to room</button>`;
         document.getElementById(`pick-${zi}`).onclick = () => {
           const d = window[`_d${zi}`][+document.querySelector(`input[name="d${zi}"]:checked`).value];
-          addToRoom(zi, d.name, d.config, checkedJobs(zi));
+          const cfg = { ...d.config };
+          if (cfg.type === 'hap' && cfg.hapRegulating) {
+            const m = val(`hapmode-${zi}`);
+            if (m === 'cool') cfg.hapTargetStateValue = 2;      // COOL
+            else if (m === 'heat') cfg.hapTargetStateValue = 1; // HEAT
+            // 'auto' keeps the onboarding default (AUTO)
+          }
+          addToRoom(zi, d.name, cfg, checkedJobs(zi));
         };
       } catch (e) { res.innerHTML = `<p class="muted">Pairing failed: ${e.message || e}. Double-check the PIN.</p>`; }
       finally { homebridge.hideSpinner(); }
@@ -294,6 +302,19 @@
       return `<p class="muted" style="margin-top:12px">What does it do?</p><div class="checks">${
         JOBS.map(([k, label]) => `<label><input type="checkbox" class="j-${zi}" value="${k}" ${preset.includes(k) ? 'checked' : ''}> ${label}</label>`).join('')
       }</div>`;
+    }
+    // Mode picker for a HAP A/C / thermostat: how Thermocombobulator arms it when it engages.
+    function hapModeOptions(zi, devices) {
+      const reg = devices.find(d => d.config && d.config.hapRegulating);
+      if (!reg) return '';
+      const cool = reg.role === 'cool';
+      return `<p class="muted" style="margin-top:12px">How should it run when engaged?</p>
+        <select id="hapmode-${zi}" class="field">
+          <option value="cool" ${cool ? 'selected' : ''}>Cool to the target</option>
+          <option value="heat" ${!cool ? 'selected' : ''}>Heat to the target</option>
+          <option value="auto">Auto — let the A/C decide</option>
+        </select>
+        <p class="muted" style="font-size:12px">Fan speed stays on the A/C's own setting (usually Auto).</p>`;
     }
     function acOptions(zi) {
       return `<p class="muted" style="margin-top:12px">How should this A/C run when engaged?</p>
