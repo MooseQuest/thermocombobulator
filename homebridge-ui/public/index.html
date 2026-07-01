@@ -153,20 +153,25 @@
     async function findDevices(zi, key) {
       const s = SERVICES[key];
       const payload = {}; (s.fields || []).forEach(([k]) => payload[k] = val(`f-${zi}-${k}`));
+      const res = document.getElementById(`res-${zi}`);
+      if (res) res.innerHTML = `<p class="muted" style="margin-top:12px">${s.direct ? 'Scanning your network…' : 'Signing in…'} (a few seconds)</p>`;
       homebridge.showSpinner();
       try {
         const devices = await homebridge.request(s.discover, payload);
         window[`_d${zi}`] = devices;
-        const res = document.getElementById(`res-${zi}`);
-        if (!devices.length) return res.innerHTML = '<p class="muted">Hmm, no devices found on that account.</p>';
+        if (!devices.length) return res.innerHTML = '<p class="muted">Hmm, no devices found.</p>';
+        const isAC = key === 'midea';
         res.innerHTML = `<p class="muted" style="margin-top:12px">Pick your device:</p>
           <div class="pick">${devices.map((d, i) => `<label><input type="radio" name="d${zi}" value="${i}" ${i ? '' : 'checked'}> <b>${d.name}</b> <span class="muted">${d.model || ''}</span></label>`).join('')}</div>
           ${jobChecks(zi, [devices[0].role || 'heat'])}
+          ${isAC ? acOptions(zi) : ''}
           <button class="big primary" id="pick-${zi}">Add to room</button>`;
         document.getElementById(`pick-${zi}`).onclick = () => {
           const idx = +document.querySelector(`input[name="d${zi}"]:checked`).value;
           const d = window[`_d${zi}`][idx];
-          addToRoom(zi, d.name, d.config, checkedJobs(zi));
+          const cfg = { ...d.config };
+          if (isAC) { cfg.mode = val(`acmode-${zi}`) || cfg.mode; cfg.fanSpeed = val(`acfan-${zi}`) || 'auto'; }
+          addToRoom(zi, d.name, cfg, checkedJobs(zi));
         };
       } catch (e) {
         homebridge.toast.error(e.message || 'Could not sign in', 'Try again');
@@ -177,6 +182,13 @@
       return `<p class="muted" style="margin-top:12px">What does it do?</p><div class="checks">${
         JOBS.map(([k, label]) => `<label><input type="checkbox" class="j-${zi}" value="${k}" ${preset.includes(k) ? 'checked' : ''}> ${label}</label>`).join('')
       }</div>`;
+    }
+    function acOptions(zi) {
+      return `<p class="muted" style="margin-top:12px">How should this A/C run when engaged?</p>
+        <div class="row"><label>Mode</label><select id="acmode-${zi}" class="field">
+          <option value="cool">Cool</option><option value="auto">Auto</option><option value="dry">Dry</option><option value="fan_only">Fan only</option></select></div>
+        <div class="row"><label>Fan</label><select id="acfan-${zi}" class="field">
+          <option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>`;
     }
     const val = id => (document.getElementById(id)?.value || '').trim();
     const checkedJobs = zi => [...document.querySelectorAll(`.j-${zi}:checked`)].map(c => c.value);

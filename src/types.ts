@@ -21,6 +21,8 @@ export interface AdapterConfig {
   key?: string;
   /** Mode to set when the device is turned on (e.g. 'cool' for a window A/C). */
   mode?: 'cool' | 'heat' | 'auto' | 'fan_only' | 'dry';
+  /** Fan speed to use when engaged (regulating devices like A/Cs). */
+  fanSpeed?: 'auto' | 'low' | 'medium' | 'high' | 'silent';
   /** Which reading a sensor returns: 'temperature' | 'humidity' (adapter-specific default). */
   sensorProperty?: 'temperature' | 'humidity';
 

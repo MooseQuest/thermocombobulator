@@ -14,6 +14,13 @@ export interface ClimateState {
 /** What every role should be doing right now. */
 export interface Plan {
   active: Active;
+  /** Whether heat/cool are permitted (mode + season). Regulating devices arm on these. */
+  allowHeat: boolean;
+  allowCool: boolean;
+  /** Setpoints to program into regulating devices. */
+  heatSetpointC: number;
+  coolSetpointC: number;
+  /** Bang-bang demand (temperature-driven) for DUMB on/off devices. */
   heat: boolean;
   heatSupplemental: boolean;
   cool: boolean;
@@ -89,7 +96,10 @@ export function decide(
   prevActive: Active,
 ): Plan {
   const c = { ...DEFAULTS, ...(control ?? {}) };
-  const off: Plan = { active: 'idle', heat: false, heatSupplemental: false, cool: false, fan: false, humidify: false, dehumidify: false, reason: '' };
+  const off: Plan = {
+    active: 'idle', allowHeat: false, allowCool: false, heatSetpointC: sp.heatC, coolSetpointC: sp.coolC,
+    heat: false, heatSupplemental: false, cool: false, fan: false, humidify: false, dehumidify: false, reason: '',
+  };
 
   // Humidity is independent of heat/cool and runs in every mode except fully off.
   const humidityPlan = (): Pick<Plan, 'humidify' | 'dehumidify'> => {
@@ -102,11 +112,8 @@ export function decide(
 
   if (mode === 'off') return { ...off, reason: 'mode off' };
 
-  const temp = state.currentTempC;
-  if (temp == null) return { ...off, ...humidityPlan(), reason: 'no temperature reading; heat/cool held off' };
-
-  // Determine which systems are permitted. Explicit heat/cool obey the user; Auto consults the
-  // seasonal changeover so we don't heat in summer / cool in winter.
+  // Which systems are permitted (mode + seasonal changeover) — independent of the current temp,
+  // so regulating devices stay armed even if our sensor blips. Explicit heat/cool obey the user.
   let wantHeat = mode === 'heat';
   let wantCool = mode === 'cool';
   let seasonNote = '';
@@ -114,6 +121,11 @@ export function decide(
     const a = seasonalAllowance(control, state.outdoorTempC);
     wantHeat = a.allowHeat; wantCool = a.allowCool; seasonNote = ` [${a.note}]`;
   }
+  const base: Plan = { ...off, allowHeat: wantHeat, allowCool: wantCool, ...humidityPlan() };
+
+  const temp = state.currentTempC;
+  if (temp == null) return { ...base, reason: `no sensor reading — regulating devices self-regulate; dumb devices held off${seasonNote}` };
+
   const below = temp < sp.heatC - c.tempBandC; // clearly too cold
   const above = temp > sp.coolC + c.tempBandC; // clearly too warm
   const atOrAboveHeat = temp >= sp.heatC;       // reached heat target (stop heating)
@@ -129,7 +141,7 @@ export function decide(
   if (active === 'heat' && !wantHeat) active = 'idle';
   if (active === 'cool' && !wantCool) active = 'idle';
 
-  const plan: Plan = { ...off, active, ...humidityPlan() };
+  const plan: Plan = { ...base, active };
 
   if (active === 'heat') {
     plan.heat = true;
@@ -197,15 +209,25 @@ export class ClimateEngine {
     }));
   }
 
+  /**
+   * Drive one temperature role. Regulating devices (those with `program`) are handed their mode +
+   * setpoint and armed when the system is allowed, then left to self-regulate — we don't force them.
+   * Dumb on/off devices are bang-banged on the temperature demand.
+   */
+  private async driveRole(adapters: Adapter[], allowed: boolean, demand: boolean, setpointC: number): Promise<void> {
+    await Promise.all(adapters.map(async (a) => {
+      try {
+        if (a.program) { if (allowed) await a.program({ setpointC }); else await a.setOn(false); }
+        else await a.setOn(demand);
+      } catch (e) { this.log.warn(`[${this.zone.name}] device drive failed: ${(e as Error).message}`); }
+    }));
+  }
+
   async apply(plan: Plan): Promise<void> {
-    // Safety ordering: turn OFF the opposing system before turning ON, so we never overlap.
-    if (!plan.heat) await this.setRole(this.roles.heat, false);
-    if (!plan.heatSupplemental) await this.setRole(this.roles.heatSupplemental, false);
-    if (!plan.cool) await this.setRole(this.roles.cool, false);
     await Promise.all([
-      this.setRole(this.roles.heat, plan.heat),
+      this.driveRole(this.roles.heat, plan.allowHeat, plan.heat, plan.heatSetpointC),
+      this.driveRole(this.roles.cool, plan.allowCool, plan.cool, plan.coolSetpointC),
       this.setRole(this.roles.heatSupplemental, plan.heatSupplemental),
-      this.setRole(this.roles.cool, plan.cool),
       this.setRole(this.roles.fan, plan.fan),
       this.setRole(this.roles.humidify, plan.humidify),
       this.setRole(this.roles.dehumidify, plan.dehumidify),

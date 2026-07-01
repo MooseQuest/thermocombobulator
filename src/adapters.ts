@@ -15,6 +15,12 @@ export interface Adapter {
   setOn(on: boolean): Promise<void>;
   setTargetTemperature?(celsius: number): Promise<void>;
   read(): Promise<number>;
+  /**
+   * Regulating devices (thermostats, A/Cs) implement this: program the device to its configured
+   * mode + fan at the given setpoint and arm it, then let its own thermostat hold the temperature.
+   * Presence of this method is how the engine knows a device self-regulates (vs. dumb on/off).
+   */
+  program?(opts: { setpointC?: number }): Promise<void>;
 }
 
 export function makeAdapter(cfg: AdapterConfig, log: Logger, platformToken?: string): Adapter {
@@ -117,6 +123,11 @@ class SmartThingsAdapter implements Adapter {
     await this.command('thermostatHeatingSetpoint', 'setHeatingSetpoint', [celsius]);
   }
 
+  async program(opts: { setpointC?: number }): Promise<void> {
+    await this.setOn(true);
+    if (opts.setpointC != null) await this.setTargetTemperature(opts.setpointC);
+  }
+
   async read(): Promise<number> {
     // Reads the first numeric value of the configured capability's status.
     const cap = this.cfg.capability ?? 'temperatureMeasurement';
@@ -194,6 +205,11 @@ class MysaAdapter implements Adapter {
     await c.setDeviceState(this.cfg.deviceId!, celsius, 'heat');
   }
 
+  async program(opts: { setpointC?: number }): Promise<void> {
+    const c = await this.client();
+    await c.setDeviceState(this.cfg.deviceId!, opts.setpointC, 'heat');
+  }
+
   async read(): Promise<number> {
     const c = await this.client();
     await ensureMysaRealtime(c, this.cfg.deviceId!);
@@ -215,6 +231,7 @@ interface MideaApplianceLike {
   setStatus(props: Record<string, unknown>): Promise<void>;
 }
 const MIDEA_MODE: Record<string, number> = { auto: 1, cool: 2, dry: 3, heat: 4, fan_only: 5 };
+const MIDEA_FAN: Record<string, number> = { auto: 102, silent: 20, low: 40, medium: 60, high: 80 };
 
 function mideaAppliance(cfg: AdapterConfig): Promise<MideaApplianceLike> {
   const k = `${cfg.host}:${cfg.deviceId}`;
@@ -254,6 +271,16 @@ class MideaAdapter implements Adapter {
   async setTargetTemperature(celsius: number): Promise<void> {
     const ac = await mideaAppliance(this.cfg);
     await ac.setStatus({ temperatureSetpoint: celsius });
+  }
+
+  /** Program the A/C to its configured mode + fan at the given setpoint, then leave it to self-regulate. */
+  async program(opts: { setpointC?: number }): Promise<void> {
+    const ac = await mideaAppliance(this.cfg);
+    const props: Record<string, unknown> = { powerOn: true };
+    if (this.cfg.mode) props.mode = MIDEA_MODE[this.cfg.mode];
+    if (this.cfg.fanSpeed) props.fanSpeed = MIDEA_FAN[this.cfg.fanSpeed];
+    if (opts.setpointC != null) props.temperatureSetpoint = Math.round(opts.setpointC);
+    await ac.setStatus(props);
   }
 
   async read(): Promise<number> {
@@ -315,6 +342,11 @@ class NestAdapter implements Adapter {
     const cool = this.cfg.mode === 'cool';
     await this.cmd(`sdm.devices.commands.ThermostatTemperatureSetpoint.Set${cool ? 'Cool' : 'Heat'}`,
       cool ? { coolCelsius: celsius } : { heatCelsius: celsius });
+  }
+
+  async program(opts: { setpointC?: number }): Promise<void> {
+    await this.setOn(true);
+    if (opts.setpointC != null) await this.setTargetTemperature(opts.setpointC);
   }
 
   async read(): Promise<number> {
