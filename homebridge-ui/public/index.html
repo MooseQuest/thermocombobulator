@@ -109,14 +109,17 @@
       render();
     }
 
+    function closeWizard(zi) { document.getElementById(`wiz-${zi}`).innerHTML = ''; }
+
     function pickService(zi) {
       const w = document.getElementById(`wiz-${zi}`);
       w.innerHTML = `<div class="step"><h4>What are you adding?</h4>${
         Object.entries(SERVICES).map(([k, s]) => `<button class="big" data-svc="${zi}:${k}">${s.emoji}  ${s.label}</button>`).join('')
-      }</div>`;
+      }<button class="big ghost" id="cancel-${zi}" style="margin-top:8px">Cancel</button></div>`;
       w.querySelectorAll('[data-svc]').forEach(b => b.onclick = () => {
         const [z, k] = b.dataset.svc.split(':'); serviceForm(+z, k);
       });
+      document.getElementById(`cancel-${zi}`).onclick = () => closeWizard(zi);
     }
 
     function serviceForm(zi, key) {
@@ -128,19 +131,23 @@
           <input class="field" id="mon-${zi}" placeholder="Turn-ON web address (URL)">
           <input class="field" id="moff-${zi}" placeholder="Turn-OFF web address (URL)">
           ${jobChecks(zi, ['heat'])}
-          <button class="big primary" id="madd-${zi}">Add</button></div>`;
+          <button class="big primary" id="madd-${zi}">Add</button>
+          <button class="big ghost" id="mback-${zi}">← Back</button></div>`;
         document.getElementById(`madd-${zi}`).onclick = () => {
           const adapter = { type: 'http', onUrl: val(`mon-${zi}`), offUrl: val(`moff-${zi}`) };
           addToRoom(zi, val(`mn-${zi}`) || 'Device', adapter, checkedJobs(zi));
         };
+        document.getElementById(`mback-${zi}`).onclick = () => pickService(zi);
         return;
       }
       w.innerHTML = `<div class="step"><h4>${s.emoji} Sign in to ${s.label}</h4>
         ${s.note ? `<p class="muted">${s.note}</p>` : ''}
         ${s.fields.map(([k, ph, t]) => `<input class="field" id="f-${zi}-${k}" type="${t}" placeholder="${ph}">`).join('')}
         <button class="big primary" id="find-${zi}">Find my devices</button>
+        <button class="big ghost" id="back-${zi}">← Back</button>
         <div id="res-${zi}"></div></div>`;
       document.getElementById(`find-${zi}`).onclick = () => findDevices(zi, key);
+      document.getElementById(`back-${zi}`).onclick = () => pickService(zi);
     }
 
     async function findDevices(zi, key) {
