@@ -74,6 +74,14 @@ class UiServer extends HomebridgePluginUiServer {
   // Discovery lists the local HomeKit bridges/accessories; pairing (user-initiated with the bridge PIN)
   // reads/writes their characteristics. IP submodules are required directly so BLE/noble never loads.
   async hapDiscover() {
+    // Serve a recent scan (persisted to disk so it survives a UI-server respawn) — repeat clicks or a
+    // mid-flow restart return instantly instead of re-running the 5s mDNS scan, where the client hung.
+    const cacheFile = path.join(this.homebridgeStoragePath || '/var/lib/homebridge', '.tcb-hap-scan.json');
+    try {
+      const c = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+      if (Date.now() - c.at < 60000 && Array.isArray(c.list) && c.list.length) return c.list;
+    } catch { /* no cache yet */ }
+
     const IPDiscovery = require('hap-controller/lib/transport/ip/ip-discovery').default;
     const d = new IPDiscovery();
     const found = new Map();
@@ -86,13 +94,14 @@ class UiServer extends HomebridgePluginUiServer {
         paired: s.sf !== undefined ? (s.sf & 1) === 0 : undefined, // status-flag bit 0 = not yet paired
       });
     });
-    d.start();
+    try { d.start(); } catch { /* dnssd may already be bound; we'll still return what we get */ }
     await new Promise((r) => setTimeout(r, 5000));
     try { d.stop(); } catch { /* best effort */ }
-    // Auto-fill the main Homebridge bridge PIN so the user doesn't have to find it.
     let mainPin;
     try { mainPin = JSON.parse(fs.readFileSync(path.join(this.homebridgeStoragePath || '/var/lib/homebridge', 'config.json'), 'utf8')).bridge?.pin; } catch { /* none */ }
-    return [...found.values()].map((b) => ({ ...b, suggestedPin: mainPin }));
+    const list = [...found.values()].map((b) => ({ ...b, suggestedPin: mainPin }));
+    if (list.length) { try { fs.writeFileSync(cacheFile, JSON.stringify({ at: Date.now(), list })); } catch { /* best effort */ } }
+    return list;
   }
 
   // HAP service + characteristic short-UUIDs we know how to drive.

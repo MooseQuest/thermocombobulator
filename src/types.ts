@@ -23,6 +23,8 @@ export interface AdapterConfig {
   mode?: 'cool' | 'heat' | 'auto' | 'fan_only' | 'dry';
   /** Fan speed to use when engaged (regulating devices like A/Cs). */
   fanSpeed?: 'auto' | 'low' | 'medium' | 'high' | 'silent';
+  /** For an A/C: run its own fan (fan-only mode) to circulate air when it isn't actively cooling. */
+  circulateWithFan?: boolean;
   /** Which reading a sensor returns: 'temperature' | 'humidity' (adapter-specific default). */
   sensorProperty?: 'temperature' | 'humidity';
 

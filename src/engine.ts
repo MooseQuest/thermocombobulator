@@ -208,15 +208,22 @@ export class ClimateEngine {
     if (zone.sensors.outdoorTemperature) this.outdoorSensor = makeAdapter(zone.sensors.outdoorTemperature.adapter, log, platformToken);
   }
 
+  private sensorWarn = new Map<string, string>();
   async readState(): Promise<ClimateState> {
-    const safeRead = async (a?: Adapter): Promise<number | null> => {
+    const safeRead = async (a: Adapter | undefined, kind: string): Promise<number | null> => {
       if (!a) return null;
-      try { return await a.read(); } catch (e) { this.log.warn(`[${this.zone.name}] sensor read failed: ${(e as Error).message}`); return null; }
+      try { const v = await a.read(); this.sensorWarn.delete(kind); return v; }
+      catch (e) {
+        // Warn once per distinct failure (e.g. a device that just has no humidity sensor), then stay quiet.
+        const msg = (e as Error).message;
+        if (this.sensorWarn.get(kind) !== msg) { this.log.warn(`[${this.zone.name}] ${kind} sensor read failed: ${msg}`); this.sensorWarn.set(kind, msg); }
+        return null;
+      }
     };
     return {
-      currentTempC: await safeRead(this.tempSensor),
-      currentHumidity: await safeRead(this.humiditySensor),
-      outdoorTempC: await safeRead(this.outdoorSensor),
+      currentTempC: await safeRead(this.tempSensor, 'temperature'),
+      currentHumidity: await safeRead(this.humiditySensor, 'humidity'),
+      outdoorTempC: await safeRead(this.outdoorSensor, 'outdoor'),
     };
   }
 

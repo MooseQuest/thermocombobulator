@@ -33,7 +33,9 @@ export class ThermocombobulatorPlatform implements DynamicPlatformPlugin {
 
   private discoverZones(): void {
     const zones = this.cfg.zones ?? [];
-    if (!zones.length) { this.log.warn('No zones configured — nothing to do.'); return; }
+    // Note: we do NOT bail early when there are no zones — the reconcile pass below must still run so
+    // that removing every thermostat/group actually unregisters the stale HomeKit accessories.
+    if (!zones.length) this.log.info('No thermostats configured — removing any leftover accessories.');
 
     const seen = new Set<string>();
     const byName = new Map<string, ZoneAccessory>();

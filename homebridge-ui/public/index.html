@@ -254,7 +254,7 @@
         res.innerHTML = '<p class="muted">Scanning for HomeKit hubs… (a few seconds)</p>';
         homebridge.showSpinner();
         try {
-          const bridges = await homebridge.request('/hap/discover', {});
+          const bridges = await withTimeout(homebridge.request('/hap/discover', {}), 30000, 'Finding hubs');
           if (!bridges.length) return res.innerHTML = '<p class="muted">No HomeKit hubs found on the network.</p>';
           window[`_hb${zi}`] = bridges;
           res.innerHTML = `<p class="muted" style="margin-top:12px">Pick the hub, then enter its HomeKit setup PIN (Homebridge → that bridge → settings):</p>
@@ -262,7 +262,7 @@
             <input class="field" id="hpin-${zi}" placeholder="Setup PIN (e.g. 031-45-154)" value="${bridges[0].suggestedPin || ''}">
             <button class="big primary" id="hpair-${zi}">Pair &amp; list devices</button>`;
           document.getElementById(`hpair-${zi}`).onclick = () => hapPair(zi);
-        } catch (e) { homebridge.toast.error(e.message || String(e), 'Discovery failed'); res.innerHTML = ''; }
+        } catch (e) { res.innerHTML = `<p class="muted">${e.message || e}. Tap "Find my HomeKit hubs" to try again.</p>`; }
         finally { homebridge.hideSpinner(); }
       };
     }
@@ -275,7 +275,7 @@
       res.innerHTML = '<p class="muted">Pairing… (can take ~10s)</p>';
       homebridge.showSpinner();
       try {
-        const devices = await homebridge.request('/hap/accessories', { deviceId: b.deviceId, address: b.address, port: b.port, pin });
+        const devices = await withTimeout(homebridge.request('/hap/accessories', { deviceId: b.deviceId, address: b.address, port: b.port, pin }), 45000, 'Pairing');
         window[`_d${zi}`] = devices;
         if (!devices.length) return res.innerHTML = '<p class="muted">Paired, but found nothing controllable.</p>';
         res.innerHTML = `<p class="muted" style="margin-top:12px">Pick your device:</p>

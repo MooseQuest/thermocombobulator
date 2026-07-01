@@ -56,6 +56,9 @@ export class ZoneAccessory {
     if (hasHeat) validModes.push(S.HEAT);
     if (hasCool) validModes.push(S.COOL);
     if (!validModes.length) validModes.push(S.AUTO);
+    // If the zone's capabilities changed (e.g. heat removed, cool added), a previously-saved mode may
+    // no longer be valid — clamp it so HomeKit gets a legal value instead of a stuck/hidden one.
+    if (ctx.mode == null || !validModes.includes(ctx.mode)) ctx.mode = validModes[0];
     this.service.getCharacteristic(S)
       .setProps({ validValues: validModes })
       .onGet(() => ctx.mode!)
