@@ -13,6 +13,8 @@ const execAsync = promisify(exec);
  * endpoint, a shell command, or a SmartThings entry can participate in a zone.
  */
 export interface Adapter {
+  /** Human label (device name) for diagnostics — set by the engine when it builds roles. */
+  label?: string;
   setOn(on: boolean): Promise<void>;
   setTargetTemperature?(celsius: number): Promise<void>;
   read(): Promise<number>;
@@ -196,29 +198,35 @@ function mysaClient(email: string, password: string): Promise<MysaClientLike> {
 }
 
 class MysaAdapter implements Adapter {
+  private lastSetpoint?: number;
   constructor(private cfg: AdapterConfig, private log: Logger) {
     if (!cfg.email || !cfg.password) throw new Error('mysa adapter: email and password are required');
     if (!cfg.deviceId) throw new Error('mysa adapter: deviceId is required');
   }
   private client() { return mysaClient(this.cfg.email!, this.cfg.password!); }
 
+  // Mode 'off' is rejected by this Mysa firmware (the publish never acks), so "off" is expressed as
+  // heat at an unreachably-low setpoint — it can't heat an occupied room to 5°C, so it never fires,
+  // but it uses the command path that actually lands. Guarantees no heat in summer.
+  private static readonly OFF_SETPOINT_C = 5;
   async setOn(on: boolean): Promise<void> {
     const c = await this.client();
     await ensureMysaRealtime(c, this.cfg.deviceId!); // commands go over MQTT — make sure it's up first
-    // Undefined temperature keeps the thermostat's current setpoint; mode drives on/off.
-    await c.setDeviceState(this.cfg.deviceId!, undefined, on ? 'heat' : 'off');
+    await c.setDeviceState(this.cfg.deviceId!, on ? (this.lastSetpoint ?? 20) : MysaAdapter.OFF_SETPOINT_C, 'heat');
   }
 
   async setTargetTemperature(celsius: number): Promise<void> {
     const c = await this.client();
     await ensureMysaRealtime(c, this.cfg.deviceId!);
+    this.lastSetpoint = celsius;
     await c.setDeviceState(this.cfg.deviceId!, celsius, 'heat');
   }
 
   async program(opts: { setpointC?: number }): Promise<void> {
     const c = await this.client();
     await ensureMysaRealtime(c, this.cfg.deviceId!);
-    await c.setDeviceState(this.cfg.deviceId!, opts.setpointC, 'heat');
+    if (opts.setpointC != null) this.lastSetpoint = opts.setpointC;
+    await c.setDeviceState(this.cfg.deviceId!, opts.setpointC ?? this.lastSetpoint ?? 20, 'heat');
   }
 
   async read(): Promise<number> {

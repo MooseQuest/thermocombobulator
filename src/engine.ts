@@ -188,7 +188,11 @@ export class ClimateEngine {
   private lastReason = '';
 
   constructor(private zone: ZoneConfig, private log: Logger, platformToken?: string) {
-    const build = (devs?: DeviceConfig[]) => (devs ?? []).map((d) => makeAdapter(d.adapter, log, platformToken));
+    const build = (devs?: DeviceConfig[]) => (devs ?? []).map((d) => {
+      const a = makeAdapter(d.adapter, log, platformToken);
+      a.label = d.name;
+      return a;
+    });
     this.roles = {
       heat: build(zone.devices.heat),
       heatSupplemental: build(zone.devices.heatSupplemental),
@@ -235,7 +239,7 @@ export class ClimateEngine {
       // A failed command retries each tick; warn once per distinct failure, then stay quiet.
       const w = `${sig}:${(e as Error).message}`;
       if (this.lastWarn.get(a) !== w) {
-        this.log.warn(`[${this.zone.name}] device command failed (${sig}): ${(e as Error).message || 'unknown'}`);
+        this.log.warn(`[${this.zone.name}] "${a.label ?? '?'}" command failed (${sig}): ${(e as Error).message || 'unknown'}`);
         this.lastWarn.set(a, w);
       }
     }
