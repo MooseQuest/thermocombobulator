@@ -109,36 +109,45 @@ class UiServer extends HomebridgePluginUiServer {
     const SVC = {
       '4A': { label: 'Thermostat', role: 'heat', regulating: true, targetStateValue: 3 },      // Thermostat / TargetHeatingCoolingState AUTO=3
       'BC': { label: 'Air Conditioner', role: 'cool', regulating: true, targetStateValue: 0 },  // HeaterCooler / TargetHeaterCoolerState AUTO=0
-      '49': { label: 'Switch', role: 'heat', regulating: false },
-      '47': { label: 'Outlet', role: 'heat', regulating: false },
+      'BD': { label: 'Humidifier', role: 'humidify', regulating: false },
+      'BB': { label: 'Air Purifier', role: 'purify', regulating: false },
       'B7': { label: 'Fan', role: 'fan', regulating: false },
       '40': { label: 'Fan', role: 'fan', regulating: false },
-      'BB': { label: 'Air Purifier', role: 'fan', regulating: false },
-      'BD': { label: 'Humidifier', role: 'humidify', regulating: false },
+      '47': { label: 'Outlet', role: 'heat', regulating: false },
+      '49': { label: 'Switch', role: 'heat', regulating: false },
     };
+    // Pick the ONE most climate-relevant service per accessory, so a device that exposes a dozen
+    // helper switches (eco/sleep/swing…) shows up as a single clean entry, not switch spam.
+    const PRIORITY = ['4A', 'BC', 'BD', 'BB', 'B7', '40', '47', '49'];
     const S = UiServer.hapShort;
     const out = [];
     for (const acc of db.accessories || []) {
+      let accName = '';
+      let best = null, bestRank = 99;
       for (const svc of acc.services || []) {
-        const info = SVC[S(svc.type)];
-        if (!info) continue;
-        const chars = {};
-        let label = '';
-        for (const ch of svc.characteristics || []) {
-          const t = S(ch.type);
-          if (t === '23') label = ch.value || label;                        // Name
-          if (t === '11') chars.current = `${acc.aid}.${ch.iid}`;           // CurrentTemperature
-          if (t === '10') chars.currentHumidity = `${acc.aid}.${ch.iid}`;   // CurrentRelativeHumidity
-          if (t === 'B0' || t === '25') chars.on = `${acc.aid}.${ch.iid}`;  // Active / On
-          if (t === '33' || t === 'B4') chars.targetState = `${acc.aid}.${ch.iid}`; // Target(Heating|HeaterCooler)State
-          if (t === '35' || t === '0D' || t === '12') chars.setpoint = `${acc.aid}.${ch.iid}`; // Target/Cooling/Heating setpoint
-        }
-        if (!chars.on && !chars.targetState) continue; // nothing controllable
-        out.push({
-          id: `${deviceId}:${acc.aid}`, name: label || info.label, model: info.label, role: info.role,
-          config: { type: 'hap', hapDeviceId: deviceId, hapAddress: address, hapPort: Number(port), hapPairing: pairing, hapChars: chars, hapRegulating: info.regulating, hapTargetStateValue: info.targetStateValue },
-        });
+        const t = S(svc.type);
+        if (t === '3E') { const nm = (svc.characteristics || []).find((ch) => S(ch.type) === '23'); if (nm && nm.value) accName = nm.value; }
+        const rank = PRIORITY.indexOf(t);
+        if (SVC[t] && rank !== -1 && rank < bestRank) { best = svc; bestRank = rank; }
       }
+      if (!best) continue;
+      const info = SVC[S(best.type)];
+      const chars = {};
+      let svcName = '';
+      for (const ch of best.characteristics || []) {
+        const t = S(ch.type);
+        if (t === '23') svcName = ch.value || svcName;
+        if (t === '11') chars.current = `${acc.aid}.${ch.iid}`;
+        if (t === '10') chars.currentHumidity = `${acc.aid}.${ch.iid}`;
+        if (t === 'B0' || t === '25') chars.on = `${acc.aid}.${ch.iid}`;
+        if (t === '33' || t === 'B4') chars.targetState = `${acc.aid}.${ch.iid}`;
+        if (t === '35' || t === '0D' || t === '12') chars.setpoint = `${acc.aid}.${ch.iid}`;
+      }
+      if (!chars.on && !chars.targetState) continue; // nothing controllable
+      out.push({
+        id: `${deviceId}:${acc.aid}`, name: accName || svcName || info.label, model: info.label, role: info.role,
+        config: { type: 'hap', hapDeviceId: deviceId, hapAddress: address, hapPort: Number(port), hapPairing: pairing, hapChars: chars, hapRegulating: info.regulating, hapTargetStateValue: info.targetStateValue },
+      });
     }
     if (!out.length) throw new Error('Paired, but found no controllable accessories on that bridge.');
     return out;

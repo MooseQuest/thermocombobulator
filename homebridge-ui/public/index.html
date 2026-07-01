@@ -49,17 +49,17 @@
   <script>
     // Friendly services. Each maps to a discovery endpoint + the sign-in fields it needs.
     const SERVICES = {
-      mysa:        { emoji: '🔥', label: 'Mysa thermostat', discover: '/mysa/discover',
+      homekit:     { emoji: '🍏', label: 'A device already set up (recommended)', hap: true,
+                     note: 'Reuse anything already in your Homebridge — added by any plugin (Midea, SmartThings, Ring…) or native HomeKit. No re-onboarding, no duplicates. This is the clean way.' },
+      mysa:        { emoji: '🔥', label: 'Mysa thermostat (sign in)', discover: '/mysa/discover',
                      fields: [['email', 'Mysa email', 'email'], ['password', 'Mysa password', 'password']] },
-      midea:       { emoji: '❄️', label: 'Midea A/C (direct — not recommended)', discover: '/midea/existing', direct: true,
-                     note: '⚠️ This talks to the A/C directly and can conflict with the Midea plugin. Prefer 🍏 "A device already in HomeKit" to control it reliably.' },
-      nest:        { emoji: '🌡️', label: 'Nest thermostat', discover: '/nest/discover',
+      nest:        { emoji: '🌡️', label: 'Nest thermostat (sign in)', discover: '/nest/discover',
                      note: 'Needs a Google Device Access project.',
                      fields: [['nestProjectId', 'Project ID', 'text'], ['nestClientId', 'Client ID', 'text'], ['nestClientSecret', 'Client secret', 'password'], ['nestRefreshToken', 'Refresh token', 'password']] },
-      smartthings: { emoji: '🏠', label: 'SmartThings device', discover: '/smartthings/discover',
+      smartthings: { emoji: '🏠', label: 'SmartThings device (sign in)', discover: '/smartthings/discover',
                      fields: [['token', 'SmartThings token', 'password']] },
-      homekit:     { emoji: '🍏', label: 'A device already in HomeKit', hap: true,
-                     note: 'Reuse any accessory another plugin already exposes (A/C, purifier, fan…). No re-onboarding.' },
+      midea:       { emoji: '❄️', label: 'Midea A/C (direct — not recommended)', discover: '/midea/existing', direct: true,
+                     note: '⚠️ Talks to the A/C directly and can conflict with the Midea plugin. Use 🍏 "A device already set up" instead.' },
       manual:      { emoji: '⚙️', label: 'Something else (advanced)', manual: true },
     };
     // Plain-language jobs. A device can do more than one.
