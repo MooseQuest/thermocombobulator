@@ -76,6 +76,7 @@ export interface AdapterConfig {
     setpoint?: string;       // single TargetTemperature (thermostats)
     coolSetpoint?: string;   // CoolingThresholdTemperature (heater-coolers)
     heatSetpoint?: string;   // HeatingThresholdTemperature (heater-coolers)
+    fanSpeed?: string;       // RotationSpeed (%) — fan control
   };
   /** Value to write to the targetState characteristic when arming (e.g. AUTO). */
   hapTargetStateValue?: number;
