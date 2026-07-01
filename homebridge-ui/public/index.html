@@ -364,9 +364,7 @@
     document.getElementById('save').onclick = async () => {
       homebridge.showSpinner();
       try {
-        console.log('[TCB save] updatePluginConfig');
-        await withTimeout(homebridge.updatePluginConfig([config]), 15000, 'Updating config');
-        console.log('[TCB save] savePluginConfig');
+        sync(); // stage the latest (fire-and-forget); the model is already kept current on every edit
         await withTimeout(homebridge.savePluginConfig(), 20000, 'Saving config');
         homebridge.hideSpinner();
         const groups = (config.groups || []).length;
@@ -374,7 +372,7 @@
       } catch (e) {
         homebridge.hideSpinner();
         console.error('[TCB save] FAILED:', e);
-        homebridge.toast.error((e && (e.message || e.error || JSON.stringify(e))) || 'Unknown error', 'Save failed');
+        homebridge.toast.error((e && (e.message || e.error || JSON.stringify(e))) || 'Unknown error', 'Save failed. Use Homebridge’s own Save button at the bottom instead.');
       }
     };
 
