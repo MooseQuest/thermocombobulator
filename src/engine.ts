@@ -162,6 +162,7 @@ export class ClimateEngine {
   readonly humiditySensor?: Adapter;
   readonly outdoorSensor?: Adapter;
   private prevActive: Active = 'idle';
+  private lastReason = '';
 
   constructor(private zone: ZoneConfig, private log: Logger, platformToken?: string) {
     const build = (devs?: DeviceConfig[]) => (devs ?? []).map((d) => makeAdapter(d.adapter, log, platformToken));
@@ -217,7 +218,15 @@ export class ClimateEngine {
     const plan = decide(state, sp, mode, this.zone.control, this.prevActive);
     this.prevActive = plan.active;
     await this.apply(plan);
-    this.log.debug(`[${this.zone.name}] ${plan.reason}`);
+    const now = state.currentTempC != null
+      ? ` — now ${state.currentTempC.toFixed(1)}°C${state.currentHumidity != null ? `, ${Math.round(state.currentHumidity)}% RH` : ''}`
+      : '';
+    const running = [plan.heat && 'heat', plan.heatSupplemental && 'aux-heat', plan.cool && 'cool', plan.fan && 'fan', plan.humidify && 'humidify', plan.dehumidify && 'dehumidify']
+      .filter(Boolean).join('+') || 'nothing';
+    const line = `[${this.zone.name}] ${plan.reason}${now} → running: ${running}`;
+    // Log at info when the situation changes (visible), debug otherwise (avoids per-tick spam).
+    if (plan.reason !== this.lastReason) { this.log.info(line); this.lastReason = plan.reason; }
+    else this.log.debug(line);
     return { state, plan };
   }
 }

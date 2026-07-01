@@ -22,17 +22,27 @@ class UiServer extends HomebridgePluginUiServer {
   constructor() {
     super();
 
-    this.onRequest('/mysa/discover', (p) => this.wrap(() => this.mysa(p)));
-    this.onRequest('/midea/discover', (p) => this.wrap(() => this.midea(p)));
-    this.onRequest('/nest/discover', (p) => this.wrap(() => this.nest(p)));
-    this.onRequest('/smartthings/discover', (p) => this.wrap(() => this.smartthings(p)));
+    this.onRequest('/mysa/discover', (p) => this.wrap('mysa', () => this.mysa(p)));
+    this.onRequest('/midea/discover', (p) => this.wrap('midea', () => this.midea(p)));
+    this.onRequest('/nest/discover', (p) => this.wrap('nest', () => this.nest(p)));
+    this.onRequest('/smartthings/discover', (p) => this.wrap('smartthings', () => this.smartthings(p)));
 
+    console.log('[thermocombobulator-ui] onboarding server started');
     this.ready();
   }
 
-  async wrap(fn) {
-    try { return await withTimeout(Promise.resolve().then(fn), 45000, 'Request'); }
-    catch (e) { console.error('[thermocombobulator-ui]', e.message); throw new RequestError(e.message || String(e), { status: 400 }); }
+  async wrap(label, fn) {
+    const t = Date.now();
+    console.log(`[thermocombobulator-ui] → ${label} discover`);
+    try {
+      const r = await withTimeout(Promise.resolve().then(fn), 45000, `${label} discovery`);
+      const n = Array.isArray(r) ? `${r.length} device(s)` : 'ok';
+      console.log(`[thermocombobulator-ui] ✓ ${label}: ${n} in ${Date.now() - t}ms`);
+      return r;
+    } catch (e) {
+      console.error(`[thermocombobulator-ui] ✗ ${label}: ${e.message} (after ${Date.now() - t}ms)`);
+      throw new RequestError(e.message || String(e), { status: 400 });
+    }
   }
 
   requireDep(name, hint) {
