@@ -67,10 +67,18 @@ export class HapAdapter implements Adapter {
   // Only present for regulating accessories (HeaterCooler/Thermostat) — set in makeAdapter.
   async program(opts: { setpointC?: number }): Promise<void> {
     const chars = this.cfg.hapChars ?? {};
+    const tv = this.cfg.hapTargetStateValue;
     const w: Record<string, unknown> = {};
     if (chars.on) w[chars.on] = 1;
-    if (chars.targetState && this.cfg.hapTargetStateValue != null) w[chars.targetState] = this.cfg.hapTargetStateValue;
-    if (chars.setpoint && opts.setpointC != null) w[chars.setpoint] = opts.setpointC;
+    if (chars.targetState && tv != null) w[chars.targetState] = tv;
+    if (opts.setpointC != null) {
+      // Write to the setpoint characteristic that matches the arm mode: cooling (2) → cooling
+      // threshold, heating (1) → heating threshold, else a single target / whatever exists.
+      const key = tv === 2 ? (chars.coolSetpoint || chars.setpoint)
+        : tv === 1 ? (chars.heatSetpoint || chars.setpoint)
+          : (chars.setpoint || chars.coolSetpoint || chars.heatSetpoint);
+      if (key) w[key] = opts.setpointC;
+    }
     if (Object.keys(w).length) await hapClient(this.cfg).setCharacteristics(w);
   }
 }

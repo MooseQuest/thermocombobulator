@@ -71,7 +71,12 @@ export interface AdapterConfig {
   /** Long-term pairing keys from pairSetup (persisted). */
   hapPairing?: Record<string, unknown>;
   /** 'aid.iid' of each function this device exposes. */
-  hapChars?: { on?: string; current?: string; currentHumidity?: string; targetState?: string; setpoint?: string };
+  hapChars?: {
+    on?: string; current?: string; currentHumidity?: string; targetState?: string;
+    setpoint?: string;       // single TargetTemperature (thermostats)
+    coolSetpoint?: string;   // CoolingThresholdTemperature (heater-coolers)
+    heatSetpoint?: string;   // HeatingThresholdTemperature (heater-coolers)
+  };
   /** Value to write to the targetState characteristic when arming (e.g. AUTO). */
   hapTargetStateValue?: number;
   /** True for HeaterCooler/Thermostat accessories (self-regulating); enables program(). */

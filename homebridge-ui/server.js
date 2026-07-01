@@ -155,7 +155,9 @@ class UiServer extends HomebridgePluginUiServer {
         if (t === '10') chars.currentHumidity = `${acc.aid}.${ch.iid}`;
         if (t === 'B0' || t === '25') chars.on = `${acc.aid}.${ch.iid}`;
         if (t === '33' || t === 'B4') chars.targetState = `${acc.aid}.${ch.iid}`;
-        if (t === '35' || t === '0D' || t === '12') chars.setpoint = `${acc.aid}.${ch.iid}`;
+        if (t === '35') chars.setpoint = `${acc.aid}.${ch.iid}`;      // TargetTemperature (thermostat)
+        if (t === '0D') chars.coolSetpoint = `${acc.aid}.${ch.iid}`;  // CoolingThresholdTemperature
+        if (t === '12') chars.heatSetpoint = `${acc.aid}.${ch.iid}`;  // HeatingThresholdTemperature
       }
       if (!chars.on && !chars.targetState) continue; // nothing controllable
       out.push({
