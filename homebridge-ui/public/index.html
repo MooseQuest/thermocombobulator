@@ -4,214 +4,203 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px; }
-    h2 { margin: 4px 0 12px; } h3 { margin: 0; }
-    .muted { color: #888; font-size: 0.85em; }
-    .zone { border: 1px solid #4444; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-    .zone-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .members { margin: 8px 0; }
-    .member { display: flex; justify-content: space-between; padding: 4px 8px; border-radius: 6px; background: #8881; margin: 3px 0; font-size: 0.9em; }
-    .role { display: inline-block; min-width: 74px; font-weight: 600; text-transform: capitalize; }
-    button { cursor: pointer; border: 1px solid #4446; background: #7773; color: inherit; border-radius: 6px; padding: 5px 10px; font-size: 0.9em; }
-    button.primary { background: #2d7ff9; color: #fff; border-color: #2d7ff9; }
-    button.danger { color: #e55; }
-    input, select { padding: 6px 8px; border-radius: 6px; border: 1px solid #4446; background: transparent; color: inherit; width: 100%; box-sizing: border-box; }
-    .row { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
-    .wizard { border: 1px dashed #2d7ff9; border-radius: 8px; padding: 12px; margin-top: 8px; background: #2d7ff911; }
-    .devlist label { display: block; padding: 5px; border-radius: 6px; }
-    .devlist label:hover { background: #8881; }
-    .roles { display: flex; flex-wrap: wrap; gap: 10px; }
-    .roles label { font-weight: normal; }
-    .bar { display: flex; gap: 8px; margin-top: 12px; }
+    :root { --accent: #2d7ff9; }
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 16px; line-height: 1.4; }
+    h2 { margin: 0 0 4px; } .sub { color: #888; margin: 0 0 18px; }
+    .room { border: 1px solid #4443; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+    .room-name { font-size: 1.15em; font-weight: 600; border: none; background: transparent; color: inherit; width: 70%; }
+    .room-name:focus { outline: none; border-bottom: 2px solid var(--accent); }
+    .things { margin: 10px 0; }
+    .thing { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #8881; border-radius: 8px; margin: 4px 0; }
+    .thing .x { margin-left: auto; cursor: pointer; color: #e55; border: none; background: none; font-size: 1.1em; }
+    .big { display: block; width: 100%; padding: 12px; margin: 6px 0; border-radius: 10px; border: 1px solid #4446; background: transparent; color: inherit; font-size: 1em; text-align: left; cursor: pointer; }
+    .big:hover { border-color: var(--accent); }
+    .primary { background: var(--accent); color: #fff; border: none; text-align: center; font-weight: 600; }
+    .ghost { background: transparent; border: 1px dashed #888; text-align: center; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    input.field { width: 100%; box-sizing: border-box; padding: 11px; border-radius: 9px; border: 1px solid #4446; background: transparent; color: inherit; margin: 5px 0; font-size: 1em; }
+    .step { border: 1px solid var(--accent); border-radius: 12px; padding: 14px; margin-top: 10px; background: #2d7ff90d; }
+    .step h4 { margin: 0 0 8px; } .muted { color: #888; font-size: 0.88em; }
+    .checks label { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; }
+    .checks label:hover { background: #8881; }
+    .pick label { display: block; padding: 10px; border-radius: 8px; border: 1px solid #4443; margin: 5px 0; cursor: pointer; }
+    .pick label:hover { border-color: var(--accent); }
+    .footer { display: flex; gap: 10px; margin-top: 16px; }
     .hidden { display: none; }
   </style>
 </head>
 <body>
-  <h2>Thermocombobulator — Zones &amp; Devices</h2>
-  <p class="muted">Build a virtual climate zone, then add devices to it. Pick a role, pick the service,
-    sign in, and choose your device — credentials go only to your Homebridge server.</p>
+  <h2>Climate setup</h2>
+  <p class="sub">Add a room, then tell it what heats, cools, or freshens it. Sign-ins stay on your Homebridge — nowhere else.</p>
 
-  <div id="zones"></div>
-  <div class="bar">
-    <button class="primary" id="addZone">+ Add zone</button>
-    <button id="save">Save</button>
+  <div id="rooms"></div>
+  <button class="big ghost" id="addRoom">＋ Add a room</button>
+
+  <div class="footer">
+    <button class="big primary" id="save" style="flex:1">Save &amp; finish</button>
   </div>
 
   <script>
-    const BRANDS = {
-      mysa:        { label: 'Mysa (thermostat)', discover: '/mysa/discover',
-                     fields: [{ k: 'email', t: 'email', label: 'Mysa email' }, { k: 'password', t: 'password', label: 'Mysa password' }] },
-      midea:       { label: 'Midea (window A/C)', discover: '/midea/discover',
-                     fields: [{ k: 'user', t: 'email', label: 'MSmartHome email' }, { k: 'password', t: 'password', label: 'MSmartHome password' }] },
-      nest:        { label: 'Nest (thermostat)', discover: '/nest/discover',
-                     help: 'Needs a Google Device Access project ($5 one-time) + OAuth credentials.',
-                     fields: [{ k: 'nestProjectId', label: 'Device Access project ID' }, { k: 'nestClientId', label: 'OAuth client ID' },
-                              { k: 'nestClientSecret', t: 'password', label: 'OAuth client secret' }, { k: 'nestRefreshToken', t: 'password', label: 'OAuth refresh token' }] },
-      smartthings: { label: 'SmartThings', discover: '/smartthings/discover',
-                     fields: [{ k: 'token', t: 'password', label: 'SmartThings token' }] },
-      http:        { label: 'HTTP / generic', manual: true },
-      command:     { label: 'Shell command', manual: true },
+    // Friendly services. Each maps to a discovery endpoint + the sign-in fields it needs.
+    const SERVICES = {
+      mysa:        { emoji: '🔥', label: 'Mysa thermostat', discover: '/mysa/discover',
+                     fields: [['email', 'Mysa email', 'email'], ['password', 'Mysa password', 'password']] },
+      midea:       { emoji: '❄️', label: 'Midea / window A/C', discover: '/midea/discover',
+                     fields: [['user', 'MSmartHome email', 'email'], ['password', 'MSmartHome password', 'password']] },
+      nest:        { emoji: '🌡️', label: 'Nest thermostat', discover: '/nest/discover',
+                     note: 'Needs a Google Device Access project.',
+                     fields: [['nestProjectId', 'Project ID', 'text'], ['nestClientId', 'Client ID', 'text'], ['nestClientSecret', 'Client secret', 'password'], ['nestRefreshToken', 'Refresh token', 'password']] },
+      smartthings: { emoji: '🏠', label: 'SmartThings device', discover: '/smartthings/discover',
+                     fields: [['token', 'SmartThings token', 'password']] },
+      manual:      { emoji: '⚙️', label: 'Something else (advanced)', manual: true },
     };
-    const ROLES = ['heat', 'cool', 'fan', 'humidify', 'dehumidify', 'temperature sensor', 'humidity sensor'];
+    // Plain-language jobs. A device can do more than one.
+    const JOBS = [
+      ['heat', '🔥 Heats the room'],
+      ['cool', '❄️ Cools the room'],
+      ['fan', '🌀 Freshens / moves air'],
+      ['humidify', '💧 Adds humidity'],
+      ['dehumidify', '🌵 Removes humidity'],
+    ];
 
     let config;
 
     async function load() {
       const blocks = await homebridge.getPluginConfig();
-      config = blocks.find(b => b.platform === 'Thermocombobulator');
-      if (!config) { config = { platform: 'Thermocombobulator', name: 'Thermocombobulator', zones: [] }; blocks.push(config); }
-      if (!Array.isArray(config.zones)) config.zones = [];
+      config = blocks.find(b => b.platform === 'Thermocombobulator')
+        || (blocks.push({ platform: 'Thermocombobulator', name: 'Thermocombobulator', zones: [] }), blocks[blocks.length - 1]);
+      config.zones = config.zones || [];
       render();
     }
 
-    function render() {
-      const root = document.getElementById('zones');
-      root.innerHTML = '';
-      config.zones.forEach((zone, zi) => root.appendChild(zoneEl(zone, zi)));
-      if (!config.zones.length) root.innerHTML = '<p class="muted">No zones yet. Add one to begin.</p>';
-    }
-
-    function memberLines(zone) {
+    function thingsOf(zone) {
       const out = [];
-      for (const role of ['heat', 'heatSupplemental', 'cool', 'fan', 'humidify', 'dehumidify']) {
-        (zone.devices?.[role] || []).forEach(d => out.push({ role, name: d.name, type: d.adapter?.type }));
-      }
-      if (zone.sensors?.temperature) out.push({ role: 'temp sensor', name: zone.sensors.temperature.name || '(sensor)', type: zone.sensors.temperature.adapter?.type });
-      if (zone.sensors?.humidity) out.push({ role: 'humidity', name: zone.sensors.humidity.name || '(sensor)', type: zone.sensors.humidity.adapter?.type });
+      for (const [job] of JOBS) (zone.devices?.[job] || []).forEach(d => out.push({ job, name: d.name }));
       return out;
     }
 
-    function zoneEl(zone, zi) {
+    function render() {
+      const root = document.getElementById('rooms');
+      root.innerHTML = config.zones.length ? '' : '<p class="muted">No rooms yet — add one below.</p>';
+      config.zones.forEach((zone, zi) => root.appendChild(roomCard(zone, zi)));
+    }
+
+    function roomCard(zone, zi) {
       const el = document.createElement('div');
-      el.className = 'zone';
-      const members = memberLines(zone).map(m =>
-        `<div class="member"><span><span class="role">${m.role}</span> ${m.name}</span><span class="muted">${m.type || ''}</span></div>`).join('');
+      el.className = 'room';
+      const things = thingsOf(zone).map((t, ti) =>
+        `<div class="thing"><span>${JOBS.find(j => j[0] === t.job)?.[1].split(' ')[0] || ''}</span> ${t.name}
+           <button class="x" data-rm="${zi}:${t.job}:${t.name}">✕</button></div>`).join('');
       el.innerHTML = `
-        <div class="zone-head">
-          <input value="${zone.name || ''}" data-z="${zi}" class="zname" style="max-width:240px" placeholder="Zone name (e.g. Rear Bedroom)">
-          <button class="danger" data-del="${zi}">Remove zone</button>
-        </div>
-        <div class="members">${members || '<span class="muted">No devices yet.</span>'}</div>
-        <button data-add="${zi}">+ Add device</button>
-        <div class="wizard hidden" id="wiz-${zi}"></div>`;
-      el.querySelector('.zname').onchange = e => { zone.name = e.target.value; };
-      el.querySelector(`[data-del="${zi}"]`).onclick = () => { config.zones.splice(zi, 1); render(); };
-      el.querySelector(`[data-add="${zi}"]`).onclick = () => openWizard(zi);
+        <input class="room-name" value="${zone.name || ''}" placeholder="Room name (e.g. Rear Bedroom)" data-z="${zi}">
+        <div class="things">${things || '<span class="muted">Nothing added yet.</span>'}</div>
+        <button class="big ghost" data-add="${zi}">＋ Add a device to this room</button>
+        <div id="wiz-${zi}"></div>`;
+      el.querySelector('.room-name').onchange = e => zone.name = e.target.value;
+      el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeThing(b.dataset.rm));
+      el.querySelector(`[data-add="${zi}"]`).onclick = () => pickService(zi);
       return el;
     }
 
-    function openWizard(zi) {
-      const w = document.getElementById(`wiz-${zi}`);
-      w.classList.remove('hidden');
-      w.innerHTML = `
-        <div class="row"><label>Service</label>
-          <select id="brand-${zi}">${Object.entries(BRANDS).map(([k, b]) => `<option value="${k}">${b.label}</option>`).join('')}</select></div>
-        <div id="brandform-${zi}"></div>`;
-      document.getElementById(`brand-${zi}`).onchange = () => brandForm(zi);
-      brandForm(zi);
+    function removeThing(key) {
+      const [zi, job, ...n] = key.split(':'); const name = n.join(':');
+      const arr = config.zones[zi].devices?.[job];
+      if (arr) config.zones[zi].devices[job] = arr.filter(d => d.name !== name);
+      render();
     }
 
-    function brandForm(zi) {
-      const brandKey = document.getElementById(`brand-${zi}`).value;
-      const b = BRANDS[brandKey];
-      const host = document.getElementById(`brandform-${zi}`);
-      if (b.manual) {
-        host.innerHTML = `
-          ${b.help ? `<p class="muted">${b.help}</p>` : ''}
-          <div class="row"><label>Device name</label><input id="mname-${zi}" placeholder="e.g. Space Heater"></div>
-          ${brandKey === 'http'
-            ? `<div class="row"><label>On URL</label><input id="onUrl-${zi}"></div><div class="row"><label>Off URL</label><input id="offUrl-${zi}"></div>`
-            : `<div class="row"><label>On command</label><input id="onCommand-${zi}"></div><div class="row"><label>Off command</label><input id="offCommand-${zi}"></div>`}
-          ${rolesHtml(zi)}
-          <div class="bar"><button class="primary" id="addManual-${zi}">Add device</button></div>`;
-        document.getElementById(`addManual-${zi}`).onclick = () => addManual(zi, brandKey);
+    function pickService(zi) {
+      const w = document.getElementById(`wiz-${zi}`);
+      w.innerHTML = `<div class="step"><h4>What are you adding?</h4>${
+        Object.entries(SERVICES).map(([k, s]) => `<button class="big" data-svc="${zi}:${k}">${s.emoji}  ${s.label}</button>`).join('')
+      }</div>`;
+      w.querySelectorAll('[data-svc]').forEach(b => b.onclick = () => {
+        const [z, k] = b.dataset.svc.split(':'); serviceForm(+z, k);
+      });
+    }
+
+    function serviceForm(zi, key) {
+      const s = SERVICES[key];
+      const w = document.getElementById(`wiz-${zi}`);
+      if (s.manual) {
+        w.innerHTML = `<div class="step"><h4>⚙️ Add a device manually</h4>
+          <input class="field" id="mn-${zi}" placeholder="Name (e.g. Space heater)">
+          <input class="field" id="mon-${zi}" placeholder="Turn-ON web address (URL)">
+          <input class="field" id="moff-${zi}" placeholder="Turn-OFF web address (URL)">
+          ${jobChecks(zi, ['heat'])}
+          <button class="big primary" id="madd-${zi}">Add</button></div>`;
+        document.getElementById(`madd-${zi}`).onclick = () => {
+          const adapter = { type: 'http', onUrl: val(`mon-${zi}`), offUrl: val(`moff-${zi}`) };
+          addToRoom(zi, val(`mn-${zi}`) || 'Device', adapter, checkedJobs(zi));
+        };
         return;
       }
-      host.innerHTML = `
-        ${b.help ? `<p class="muted">${b.help}</p>` : ''}
-        ${b.fields.map(f => `<div class="row"><label>${f.label}</label><input id="f-${zi}-${f.k}" type="${f.t || 'text'}"></div>`).join('')}
-        <div class="bar"><button class="primary" id="disc-${zi}">Sign in &amp; discover</button></div>
-        <div id="discres-${zi}"></div>`;
-      document.getElementById(`disc-${zi}`).onclick = () => discover(zi, brandKey);
+      w.innerHTML = `<div class="step"><h4>${s.emoji} Sign in to ${s.label}</h4>
+        ${s.note ? `<p class="muted">${s.note}</p>` : ''}
+        ${s.fields.map(([k, ph, t]) => `<input class="field" id="f-${zi}-${k}" type="${t}" placeholder="${ph}">`).join('')}
+        <button class="big primary" id="find-${zi}">Find my devices</button>
+        <div id="res-${zi}"></div></div>`;
+      document.getElementById(`find-${zi}`).onclick = () => findDevices(zi, key);
     }
 
-    function rolesHtml(zi) {
-      return `<div class="row" style="align-items:start"><label>Roles</label><div class="roles">${
-        ROLES.map((r, i) => `<label><input type="checkbox" class="role-${zi}" value="${r}" ${r === 'heat' ? 'checked' : ''}> ${r}</label>`).join('')}</div></div>`;
-    }
-
-    async function discover(zi, brandKey) {
-      const b = BRANDS[brandKey];
-      const payload = {};
-      b.fields.forEach(f => payload[f.k] = document.getElementById(`f-${zi}-${f.k}`).value);
+    async function findDevices(zi, key) {
+      const s = SERVICES[key];
+      const payload = {}; s.fields.forEach(([k]) => payload[k] = val(`f-${zi}-${k}`));
       homebridge.showSpinner();
       try {
-        const devices = await homebridge.request(b.discover, payload);
-        const res = document.getElementById(`discres-${zi}`);
-        if (!devices.length) { res.innerHTML = '<p class="muted">No devices found.</p>'; return; }
-        res.innerHTML = `
-          <p class="muted">Select a device and its role(s):</p>
-          <div class="devlist">${devices.map((d, i) =>
-            `<label><input type="radio" name="dev-${zi}" value="${i}" ${i === 0 ? 'checked' : ''}> <b>${d.name}</b> <span class="muted">${d.model || ''}</span></label>`).join('')}</div>
-          ${rolesHtml(zi)}
-          <div class="bar"><button class="primary" id="addDisc-${zi}">Add device</button></div>`;
-        window[`_disc_${zi}`] = devices;
-        document.getElementById(`addDisc-${zi}`).onclick = () => addDiscovered(zi);
-        homebridge.toast.success(`Found ${devices.length} device(s)`, brandKey);
+        const devices = await homebridge.request(s.discover, payload);
+        window[`_d${zi}`] = devices;
+        const res = document.getElementById(`res-${zi}`);
+        if (!devices.length) return res.innerHTML = '<p class="muted">Hmm, no devices found on that account.</p>';
+        res.innerHTML = `<p class="muted" style="margin-top:12px">Pick your device:</p>
+          <div class="pick">${devices.map((d, i) => `<label><input type="radio" name="d${zi}" value="${i}" ${i ? '' : 'checked'}> <b>${d.name}</b> <span class="muted">${d.model || ''}</span></label>`).join('')}</div>
+          ${jobChecks(zi, [devices[0].role || 'heat'])}
+          <button class="big primary" id="pick-${zi}">Add to room</button>`;
+        document.getElementById(`pick-${zi}`).onclick = () => {
+          const idx = +document.querySelector(`input[name="d${zi}"]:checked`).value;
+          const d = window[`_d${zi}`][idx];
+          addToRoom(zi, d.name, d.config, checkedJobs(zi));
+        };
       } catch (e) {
-        homebridge.toast.error(e.message || String(e), 'Discovery failed');
+        homebridge.toast.error(e.message || 'Could not sign in', 'Try again');
       } finally { homebridge.hideSpinner(); }
     }
 
-    function selectedRoles(zi) {
-      return [...document.querySelectorAll(`.role-${zi}:checked`)].map(c => c.value);
+    function jobChecks(zi, preset) {
+      return `<p class="muted" style="margin-top:12px">What does it do?</p><div class="checks">${
+        JOBS.map(([k, label]) => `<label><input type="checkbox" class="j-${zi}" value="${k}" ${preset.includes(k) ? 'checked' : ''}> ${label}</label>`).join('')
+      }</div>`;
     }
+    const val = id => (document.getElementById(id)?.value || '').trim();
+    const checkedJobs = zi => [...document.querySelectorAll(`.j-${zi}:checked`)].map(c => c.value);
 
-    function assign(zone, roles, name, adapter) {
+    function addToRoom(zi, name, adapter, jobs) {
+      if (!jobs.length) return homebridge.toast.error('Pick what it does');
+      const zone = config.zones[zi];
       zone.devices = zone.devices || {};
       zone.sensors = zone.sensors || {};
-      for (const r of roles) {
-        if (r === 'temperature sensor') zone.sensors.temperature = { name, adapter: { ...adapter, sensorProperty: 'temperature' } };
-        else if (r === 'humidity sensor') zone.sensors.humidity = { name, adapter: { ...adapter, sensorProperty: 'humidity' } };
-        else { zone.devices[r] = zone.devices[r] || []; zone.devices[r].push({ name, adapter }); }
+      for (const job of jobs) { zone.devices[job] = zone.devices[job] || []; zone.devices[job].push({ name, adapter }); }
+      // Thermostats/ACs quietly become the room's temperature + humidity source (no extra step for the user).
+      if ((jobs.includes('heat') || jobs.includes('cool')) && !zone.sensors.temperature) {
+        zone.sensors.temperature = { name, adapter: { ...adapter, sensorProperty: 'temperature' } };
+        zone.sensors.humidity = { name, adapter: { ...adapter, sensorProperty: 'humidity' } };
       }
-    }
-
-    function addDiscovered(zi) {
-      const zone = config.zones[zi];
-      const devices = window[`_disc_${zi}`];
-      const idx = +document.querySelector(`input[name="dev-${zi}"]:checked`).value;
-      const d = devices[idx];
-      const roles = selectedRoles(zi);
-      if (!roles.length) return homebridge.toast.error('Pick at least one role');
-      assign(zone, roles, d.name, d.config);
+      document.getElementById(`wiz-${zi}`).innerHTML = '';
+      homebridge.toast.success(`Added ${name}`, 'Nice');
       render();
     }
 
-    function addManual(zi, brandKey) {
-      const zone = config.zones[zi];
-      const name = document.getElementById(`mname-${zi}`).value || brandKey;
-      const adapter = brandKey === 'http'
-        ? { type: 'http', onUrl: document.getElementById(`onUrl-${zi}`).value, offUrl: document.getElementById(`offUrl-${zi}`).value }
-        : { type: 'command', onCommand: document.getElementById(`onCommand-${zi}`).value, offCommand: document.getElementById(`offCommand-${zi}`).value };
-      const roles = selectedRoles(zi);
-      if (!roles.length) return homebridge.toast.error('Pick at least one role');
-      assign(zone, roles, name, adapter);
-      render();
-    }
-
-    document.getElementById('addZone').onclick = () => {
-      config.zones.push({ name: `Zone ${config.zones.length + 1}`, control: { defaultMode: 'auto', circulateFans: true }, sensors: {}, devices: {} });
+    document.getElementById('addRoom').onclick = () => {
+      config.zones.push({ name: '', control: { defaultMode: 'auto', circulateFans: true }, sensors: {}, devices: {} });
       render();
     };
-
     document.getElementById('save').onclick = async () => {
       const blocks = await homebridge.getPluginConfig();
       const i = blocks.findIndex(b => b.platform === 'Thermocombobulator');
-      if (i >= 0) blocks[i] = config; else blocks.push(config);
+      i >= 0 ? blocks[i] = config : blocks.push(config);
       await homebridge.updatePluginConfig(blocks);
       await homebridge.savePluginConfig();
-      homebridge.toast.success('Saved. Restart Homebridge to apply.', 'Thermocombobulator');
+      homebridge.toast.success('Saved! Restart Homebridge to apply.', 'All set');
     };
 
     load();

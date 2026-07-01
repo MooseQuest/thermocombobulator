@@ -2,61 +2,41 @@
   "pluginAlias": "Thermocombobulator",
   "pluginType": "platform",
   "singular": true,
-  "headerDisplay": "Fuse heat, cool, fans, and humidity devices into one virtual central-climate zone per room. Define each zone's sensors and member devices below; deep device/adapter config is easiest in the JSON config editor — see the README.",
-  "footerDisplay": "Docs & examples: https://github.com/moosequest/thermocombobulator",
+  "customUi": true,
+  "headerDisplay": "Set up climate control for a room. Use the **Add device** buttons in the setup screen to sign in and find your thermostats, A/Cs, and purifiers — everything else just works on smart defaults.",
+  "footerDisplay": "Need help? https://github.com/moosequest/thermocombobulator",
   "schema": {
     "type": "object",
     "properties": {
-      "name": {
-        "title": "Name",
-        "type": "string",
-        "default": "Thermocombobulator",
-        "required": true
-      },
-      "smartThingsToken": {
-        "title": "SmartThings token (shared)",
-        "type": "string",
-        "description": "Optional. Used by any 'smartthings' device adapters that don't set their own token.",
-        "x-schema-form": { "type": "password" }
-      },
-      "pollIntervalSeconds": {
-        "title": "Poll interval (seconds)",
-        "type": "integer",
-        "default": 30,
-        "minimum": 5,
-        "description": "How often each zone re-reads sensors and re-evaluates its devices."
-      },
+      "name": { "type": "string", "default": "Thermocombobulator" },
+      "smartThingsToken": { "title": "SmartThings token (optional)", "type": "string" },
+      "pollIntervalSeconds": { "title": "Refresh every (seconds)", "type": "integer", "default": 30, "minimum": 5 },
       "zones": {
-        "title": "Zones",
         "type": "array",
+        "title": "Rooms",
         "items": {
           "type": "object",
           "properties": {
-            "name": { "title": "Zone name", "type": "string", "required": true },
+            "name": { "title": "Room", "type": "string", "required": true, "placeholder": "e.g. Rear Bedroom" },
             "control": {
-              "title": "Control",
               "type": "object",
               "properties": {
-                "defaultMode": { "title": "Default mode", "type": "string", "default": "off", "oneOf": [
-                  { "title": "Off", "enum": ["off"] },
-                  { "title": "Heat", "enum": ["heat"] },
-                  { "title": "Cool", "enum": ["cool"] },
-                  { "title": "Auto", "enum": ["auto"] }
-                ] },
-                "season": { "title": "Season (Auto mode)", "type": "string", "default": "auto", "description": "Stops heat in summer / A/C in winter. 'auto' decides from outdoor temp.", "oneOf": [
-                  { "title": "Auto (from outdoor temp)", "enum": ["auto"] },
-                  { "title": "Heating season", "enum": ["heating"] },
-                  { "title": "Cooling season", "enum": ["cooling"] },
-                  { "title": "Both (no lockout)", "enum": ["both"] }
-                ] },
-                "changeoverTempC": { "title": "Changeover outdoor temp (°C)", "type": "number", "description": "Above this = cooling season (heat locked out); below = heating season. Needs an outdoor sensor." },
-                "seasonDeadbandC": { "title": "Season shoulder band (°C)", "type": "number", "default": 3 },
-                "tempBandC": { "title": "Temp hysteresis band (°C)", "type": "number", "default": 0.5 },
-                "supplementalDeltaC": { "title": "Supplemental-heat delta (°C)", "type": "number", "default": 2 },
-                "circulateFans": { "title": "Circulate fans during heat/cool", "type": "boolean", "default": false },
-                "freeCoolingMarginC": { "title": "Free-cooling margin (°C, 0=off)", "type": "number", "default": 0 },
-                "humidityTarget": { "title": "Target humidity (%)", "type": "number" },
-                "humidityBandPct": { "title": "Humidity band (%)", "type": "number", "default": 5 }
+                "defaultMode": { "title": "Mode", "type": "string", "default": "auto",
+                  "oneOf": [
+                    { "title": "Auto — let it manage heat & cool", "enum": ["auto"] },
+                    { "title": "Heat only", "enum": ["heat"] },
+                    { "title": "Cool only", "enum": ["cool"] },
+                    { "title": "Off", "enum": ["off"] }
+                  ] },
+                "season": { "type": "string", "default": "auto" },
+                "changeoverTempC": { "type": "number" },
+                "seasonDeadbandC": { "type": "number", "default": 3 },
+                "tempBandC": { "type": "number", "default": 0.5 },
+                "supplementalDeltaC": { "type": "number", "default": 2 },
+                "circulateFans": { "type": "boolean", "default": false },
+                "freeCoolingMarginC": { "type": "number", "default": 0 },
+                "humidityTarget": { "type": "number" },
+                "humidityBandPct": { "type": "number", "default": 5 }
               }
             }
           }
@@ -65,8 +45,36 @@
     }
   },
   "layout": [
-    "name",
-    { "type": "section", "title": "Advanced", "expandable": true, "items": ["smartThingsToken", "pollIntervalSeconds"] },
-    { "key": "zones", "type": "array", "title": "Zones", "items": ["zones[].name", "zones[].control.defaultMode", "zones[].control.tempBandC", "zones[].control.supplementalDeltaC", "zones[].control.circulateFans", "zones[].control.freeCoolingMarginC", "zones[].control.humidityTarget", "zones[].control.humidityBandPct"] }
+    {
+      "key": "zones",
+      "type": "array",
+      "title": "Rooms",
+      "buttonText": "Add room",
+      "items": [
+        "zones[].name",
+        "zones[].control.defaultMode",
+        {
+          "type": "fieldset",
+          "expandable": true,
+          "expanded": false,
+          "title": "Advanced (optional — smart defaults are fine)",
+          "items": [
+            "zones[].control.humidityTarget",
+            "zones[].control.changeoverTempC",
+            "zones[].control.circulateFans",
+            "zones[].control.freeCoolingMarginC",
+            "zones[].control.supplementalDeltaC",
+            "zones[].control.tempBandC"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "fieldset",
+      "expandable": true,
+      "expanded": false,
+      "title": "Plugin settings (optional)",
+      "items": ["smartThingsToken", "pollIntervalSeconds"]
+    }
   ]
 }
