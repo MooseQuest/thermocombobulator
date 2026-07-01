@@ -6,7 +6,7 @@ import type { PlatformConfig } from 'homebridge';
  * pick a display unit, but conversion happens at the edges.
  */
 
-export type AdapterType = 'http' | 'command' | 'smartthings' | 'mysa' | 'midea' | 'nest';
+export type AdapterType = 'http' | 'command' | 'smartthings' | 'mysa' | 'midea' | 'nest' | 'hap';
 
 /** How to actuate (on/off, optionally setpoint) and/or read a single physical device. */
 export interface AdapterConfig {
@@ -61,6 +61,19 @@ export interface AdapterConfig {
   /** Capability used for on/off, default "switch". */
   capability?: string;
   component?: string;
+
+  // --- hap (control an accessory already in HomeKit, via hap-controller IP transport) ---
+  hapDeviceId?: string;
+  hapAddress?: string;
+  hapPort?: number;
+  /** Long-term pairing keys from pairSetup (persisted). */
+  hapPairing?: Record<string, unknown>;
+  /** 'aid.iid' of each function this device exposes. */
+  hapChars?: { on?: string; current?: string; currentHumidity?: string; targetState?: string; setpoint?: string };
+  /** Value to write to the targetState characteristic when arming (e.g. AUTO). */
+  hapTargetStateValue?: number;
+  /** True for HeaterCooler/Thermostat accessories (self-regulating); enables program(). */
+  hapRegulating?: boolean;
 }
 
 /** A controllable device that belongs to a role in a zone. */
@@ -102,6 +115,10 @@ export interface ZoneControlConfig {
   humidityTarget?: number;
   /** Hysteresis band around humidity target in % (default 5). */
   humidityBandPct?: number;
+  /** Run air purifiers whenever the thermostat is on (year-round). Default true. */
+  purify?: boolean;
+  /** Bring in fresh air whenever the thermostat is on (year-round). Default false (opt-in). */
+  freshAir?: boolean;
 }
 
 export interface ZoneSensors {
@@ -118,6 +135,10 @@ export interface ZoneDevices {
   fan?: DeviceConfig[];
   humidify?: DeviceConfig[];
   dehumidify?: DeviceConfig[];
+  /** Air purifiers — run year-round (independent of heat/cool), not season-gated. */
+  purify?: DeviceConfig[];
+  /** Fresh-air / ventilation (e.g. an A/C's fresh-air intake, an ERV) — year-round when enabled. */
+  freshAir?: DeviceConfig[];
 }
 
 export interface ZoneConfig {

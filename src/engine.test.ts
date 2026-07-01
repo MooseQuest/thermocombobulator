@@ -114,3 +114,17 @@ test('regulating devices stay armed even when the room sensor blips', () => {
   assert.equal(p.coolSetpointC, 24);
   assert.equal(p.cool, false);       // but no dumb bang-bang without a reading
 });
+
+// --- independent, year-round layers (purify / fresh-air), not season- or temp-gated ---
+test('purify runs year-round when on, stops when the thermostat is off', () => {
+  assert.equal(decide(st(22), sp, 'auto', {}, 'idle').purify, true);   // default on
+  assert.equal(decide(st(22), sp, 'auto', {}, 'idle').freshAir, false); // opt-in
+  assert.equal(decide(st(22), sp, 'off', {}, 'idle').purify, false);    // off = everything off
+  assert.equal(decide(st(22), sp, 'cool', { purify: false }, 'idle').purify, false); // can disable
+});
+
+test('fresh-air is opt-in and independent of season/temperature', () => {
+  const p = decide(st(null, null, 37.8), sp, 'auto', { freshAir: true, season: 'cooling' }, 'idle');
+  assert.equal(p.freshAir, true);  // runs even with no reading, hot outside, cooling season
+  assert.equal(p.purify, true);
+});

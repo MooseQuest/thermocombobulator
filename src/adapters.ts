@@ -2,6 +2,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Logger } from 'homebridge';
 import type { AdapterConfig } from './types';
+import { HapAdapter } from './hapAdapter';
 
 const execAsync = promisify(exec);
 
@@ -31,6 +32,13 @@ export function makeAdapter(cfg: AdapterConfig, log: Logger, platformToken?: str
     case 'mysa': return new MysaAdapter(cfg, log);
     case 'midea': return new MideaAdapter(cfg, log);
     case 'nest': return new NestAdapter(cfg, log);
+    case 'hap': {
+      const a = new HapAdapter(cfg, log);
+      // Dumb HomeKit accessories (switch/fan/purifier) don't self-regulate — hide program() so the
+      // engine bang-bangs them instead of arming them with a setpoint.
+      if (!cfg.hapRegulating) (a as unknown as { program?: unknown }).program = undefined;
+      return a;
+    }
     default: throw new Error(`Unknown adapter type: ${(cfg as AdapterConfig).type}`);
   }
 }

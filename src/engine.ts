@@ -27,6 +27,9 @@ export interface Plan {
   fan: boolean;
   humidify: boolean;
   dehumidify: boolean;
+  /** Independent, year-round layers (not season-gated). */
+  purify: boolean;
+  freshAir: boolean;
   reason: string;
 }
 
@@ -37,6 +40,8 @@ interface RoleAdapters {
   fan: Adapter[];
   humidify: Adapter[];
   dehumidify: Adapter[];
+  purify: Adapter[];
+  freshAir: Adapter[];
 }
 
 const DEFAULTS = {
@@ -98,7 +103,8 @@ export function decide(
   const c = { ...DEFAULTS, ...(control ?? {}) };
   const off: Plan = {
     active: 'idle', allowHeat: false, allowCool: false, heatSetpointC: sp.heatC, coolSetpointC: sp.coolC,
-    heat: false, heatSupplemental: false, cool: false, fan: false, humidify: false, dehumidify: false, reason: '',
+    heat: false, heatSupplemental: false, cool: false, fan: false, humidify: false, dehumidify: false,
+    purify: false, freshAir: false, reason: '',
   };
 
   // Humidity is independent of heat/cool and runs in every mode except fully off.
@@ -121,7 +127,12 @@ export function decide(
     const a = seasonalAllowance(control, state.outdoorTempC);
     wantHeat = a.allowHeat; wantCool = a.allowCool; seasonNote = ` [${a.note}]`;
   }
-  const base: Plan = { ...off, allowHeat: wantHeat, allowCool: wantCool, ...humidityPlan() };
+  // Independent layers run year-round whenever the thermostat is on (not season- or temp-gated):
+  // purify defaults on, fresh-air is opt-in.
+  const base: Plan = {
+    ...off, allowHeat: wantHeat, allowCool: wantCool,
+    purify: control?.purify !== false, freshAir: !!control?.freshAir, ...humidityPlan(),
+  };
 
   const temp = state.currentTempC;
   if (temp == null) return { ...base, reason: `no sensor reading — regulating devices self-regulate; dumb devices held off${seasonNote}` };
@@ -185,6 +196,8 @@ export class ClimateEngine {
       fan: build(zone.devices.fan),
       humidify: build(zone.devices.humidify),
       dehumidify: build(zone.devices.dehumidify),
+      purify: build(zone.devices.purify),
+      freshAir: build(zone.devices.freshAir),
     };
     this.tempSensor = makeAdapter(zone.sensors.temperature.adapter, log, platformToken);
     if (zone.sensors.humidity) this.humiditySensor = makeAdapter(zone.sensors.humidity.adapter, log, platformToken);
@@ -256,6 +269,8 @@ export class ClimateEngine {
       this.setRole(this.roles.fan, plan.fan),
       this.setRole(this.roles.humidify, plan.humidify),
       this.setRole(this.roles.dehumidify, plan.dehumidify),
+      this.setRole(this.roles.purify, plan.purify),
+      this.setRole(this.roles.freshAir, plan.freshAir),
     ]);
   }
 
@@ -268,8 +283,17 @@ export class ClimateEngine {
     const now = state.currentTempC != null
       ? ` — now ${state.currentTempC.toFixed(1)}°C${state.currentHumidity != null ? `, ${Math.round(state.currentHumidity)}% RH` : ''}`
       : '';
-    const running = [plan.heat && 'heat', plan.heatSupplemental && 'aux-heat', plan.cool && 'cool', plan.fan && 'fan', plan.humidify && 'humidify', plan.dehumidify && 'dehumidify']
-      .filter(Boolean).join('+') || 'nothing';
+    const has = (r: keyof RoleAdapters) => this.roles[r].length > 0;
+    const running = [
+      plan.heat && has('heat') && 'heat',
+      plan.heatSupplemental && has('heatSupplemental') && 'aux-heat',
+      plan.cool && has('cool') && 'cool',
+      plan.fan && has('fan') && 'fan',
+      plan.humidify && has('humidify') && 'humidify',
+      plan.dehumidify && has('dehumidify') && 'dehumidify',
+      plan.purify && has('purify') && 'purify',
+      plan.freshAir && has('freshAir') && 'fresh-air',
+    ].filter(Boolean).join('+') || 'nothing';
     const line = `[${this.zone.name}] ${plan.reason}${now} → running: ${running}`;
     // Log at info when the situation changes (visible), debug otherwise (avoids per-tick spam).
     if (plan.reason !== this.lastReason) { this.log.info(line); this.lastReason = plan.reason; }

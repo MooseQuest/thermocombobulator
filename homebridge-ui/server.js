@@ -39,6 +39,8 @@ class UiServer extends HomebridgePluginUiServer {
   constructor() {
     super();
 
+    this.onRequest('/hap/discover', (p) => this.wrap('hap-discover', () => this.hapDiscover(p)));
+    this.onRequest('/hap/accessories', (p) => this.wrap('hap-accessories', () => this.hapAccessories(p)));
     this.onRequest('/mysa/discover', (p) => this.wrap('mysa', () => this.mysa(p)));
     this.onRequest('/midea/existing', (p) => this.wrap('midea-existing', () => this.mideaExisting(p)));
     this.onRequest('/midea/discover', (p) => this.wrap('midea', () => this.midea(p)));
@@ -66,6 +68,80 @@ class UiServer extends HomebridgePluginUiServer {
   requireDep(name, hint) {
     try { return require(path.join(this.homebridgeStoragePath ? '' : '', name)); }
     catch { throw new Error(`This device type needs the optional '${name}' package on the Homebridge server. ${hint || ''}`); }
+  }
+
+  // --- HAP: control ANY accessory already in HomeKit, via hap-controller (IP transport only) ---
+  // Discovery lists the local HomeKit bridges/accessories; pairing (user-initiated with the bridge PIN)
+  // reads/writes their characteristics. IP submodules are required directly so BLE/noble never loads.
+  async hapDiscover() {
+    const IPDiscovery = require('hap-controller/lib/transport/ip/ip-discovery').default;
+    const d = new IPDiscovery();
+    const found = new Map();
+    d.on('serviceUp', (s) => {
+      if (!s || !s.id) return;
+      found.set(s.id, {
+        deviceId: s.id,
+        name: String(s.name || s.id).replace(/\._hap\._tcp.*/, ''),
+        address: s.address, port: s.port, model: s.md,
+        paired: s.sf !== undefined ? (s.sf & 1) === 0 : undefined, // status-flag bit 0 = not yet paired
+      });
+    });
+    d.start();
+    await new Promise((r) => setTimeout(r, 5000));
+    try { d.stop(); } catch { /* best effort */ }
+    // Auto-fill the main Homebridge bridge PIN so the user doesn't have to find it.
+    let mainPin;
+    try { mainPin = JSON.parse(fs.readFileSync(path.join(this.homebridgeStoragePath || '/var/lib/homebridge', 'config.json'), 'utf8')).bridge?.pin; } catch { /* none */ }
+    return [...found.values()].map((b) => ({ ...b, suggestedPin: mainPin }));
+  }
+
+  // HAP service + characteristic short-UUIDs we know how to drive.
+  static hapShort(t) { return String(t).split('-')[0].replace(/^0+/, '').toUpperCase(); }
+  async hapAccessories({ deviceId, address, port, pin }) {
+    if (!deviceId || !address || !pin) throw new Error('Device, address and the bridge PIN are required.');
+    const HttpClient = require('hap-controller/lib/transport/ip/http-client').default;
+    const c = new HttpClient(deviceId, address, Number(port));
+    await c.pairSetup(String(pin).trim());
+    const pairing = c.getLongTermData();
+    const db = await c.getAccessories();
+    try { await c.close(); } catch { /* best effort */ }
+
+    const SVC = {
+      '4A': { label: 'Thermostat', role: 'heat', regulating: true, targetStateValue: 3 },      // Thermostat / TargetHeatingCoolingState AUTO=3
+      'BC': { label: 'Air Conditioner', role: 'cool', regulating: true, targetStateValue: 0 },  // HeaterCooler / TargetHeaterCoolerState AUTO=0
+      '49': { label: 'Switch', role: 'heat', regulating: false },
+      '47': { label: 'Outlet', role: 'heat', regulating: false },
+      'B7': { label: 'Fan', role: 'fan', regulating: false },
+      '40': { label: 'Fan', role: 'fan', regulating: false },
+      'BB': { label: 'Air Purifier', role: 'fan', regulating: false },
+      'BD': { label: 'Humidifier', role: 'humidify', regulating: false },
+    };
+    const S = UiServer.hapShort;
+    const out = [];
+    for (const acc of db.accessories || []) {
+      for (const svc of acc.services || []) {
+        const info = SVC[S(svc.type)];
+        if (!info) continue;
+        const chars = {};
+        let label = '';
+        for (const ch of svc.characteristics || []) {
+          const t = S(ch.type);
+          if (t === '23') label = ch.value || label;                        // Name
+          if (t === '11') chars.current = `${acc.aid}.${ch.iid}`;           // CurrentTemperature
+          if (t === '10') chars.currentHumidity = `${acc.aid}.${ch.iid}`;   // CurrentRelativeHumidity
+          if (t === 'B0' || t === '25') chars.on = `${acc.aid}.${ch.iid}`;  // Active / On
+          if (t === '33' || t === 'B4') chars.targetState = `${acc.aid}.${ch.iid}`; // Target(Heating|HeaterCooler)State
+          if (t === '35' || t === '0D' || t === '12') chars.setpoint = `${acc.aid}.${ch.iid}`; // Target/Cooling/Heating setpoint
+        }
+        if (!chars.on && !chars.targetState) continue; // nothing controllable
+        out.push({
+          id: `${deviceId}:${acc.aid}`, name: label || info.label, model: info.label, role: info.role,
+          config: { type: 'hap', hapDeviceId: deviceId, hapAddress: address, hapPort: Number(port), hapPairing: pairing, hapChars: chars, hapRegulating: info.regulating, hapTargetStateValue: info.targetStateValue },
+        });
+      }
+    }
+    if (!out.length) throw new Error('Paired, but found no controllable accessories on that bridge.');
+    return out;
   }
 
   // --- Mysa: reuse a persisted session (refresh token) so we don't re-login (Cognito throttles that) ---

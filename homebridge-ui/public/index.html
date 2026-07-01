@@ -57,6 +57,8 @@
                      fields: [['nestProjectId', 'Project ID', 'text'], ['nestClientId', 'Client ID', 'text'], ['nestClientSecret', 'Client secret', 'password'], ['nestRefreshToken', 'Refresh token', 'password']] },
       smartthings: { emoji: '🏠', label: 'SmartThings device', discover: '/smartthings/discover',
                      fields: [['token', 'SmartThings token', 'password']] },
+      homekit:     { emoji: '🍏', label: 'A device already in HomeKit', hap: true,
+                     note: 'Reuse any accessory another plugin already exposes (A/C, purifier, fan…). No re-onboarding.' },
       manual:      { emoji: '⚙️', label: 'Something else (advanced)', manual: true },
     };
     // Plain-language jobs. A device can do more than one.
@@ -66,6 +68,8 @@
       ['fan', '🌀 Freshens / moves air'],
       ['humidify', '💧 Adds humidity'],
       ['dehumidify', '🌵 Removes humidity'],
+      ['purify', '🌬️ Cleans the air'],
+      ['freshAir', '🪟 Brings in fresh air'],
     ];
 
     let config;
@@ -164,6 +168,7 @@
     function serviceForm(zi, key) {
       const s = SERVICES[key];
       const w = document.getElementById(`wiz-${zi}`);
+      if (s.hap) { hapForm(zi); return; }
       if (s.manual) {
         w.innerHTML = `<div class="step"><h4>⚙️ Add a device manually</h4>
           <input class="field" id="mn-${zi}" placeholder="Name (e.g. Space heater)">
@@ -215,6 +220,55 @@
       } catch (e) {
         homebridge.toast.error(e.message || 'Could not sign in', 'Try again');
       } finally { homebridge.hideSpinner(); }
+    }
+
+    async function hapForm(zi) {
+      const w = document.getElementById(`wiz-${zi}`);
+      w.innerHTML = `<div class="step"><h4>🍏 A device already in HomeKit</h4>
+        <p class="muted">Reuse any accessory another plugin already exposes (A/C, purifier, fan…).</p>
+        <button class="big primary" id="hfind-${zi}">Find my HomeKit hubs</button>
+        <button class="big ghost" id="hback-${zi}">← Back</button>
+        <div id="res-${zi}"></div></div>`;
+      document.getElementById(`hback-${zi}`).onclick = () => pickService(zi);
+      document.getElementById(`hfind-${zi}`).onclick = async () => {
+        const res = document.getElementById(`res-${zi}`);
+        res.innerHTML = '<p class="muted">Scanning for HomeKit hubs… (a few seconds)</p>';
+        homebridge.showSpinner();
+        try {
+          const bridges = await homebridge.request('/hap/discover', {});
+          if (!bridges.length) return res.innerHTML = '<p class="muted">No HomeKit hubs found on the network.</p>';
+          window[`_hb${zi}`] = bridges;
+          res.innerHTML = `<p class="muted" style="margin-top:12px">Pick the hub, then enter its HomeKit setup PIN (Homebridge → that bridge → settings):</p>
+            <div class="pick">${bridges.map((b, i) => `<label><input type="radio" name="hb${zi}" value="${i}" ${i ? '' : 'checked'}> <b>${b.name}</b> <span class="muted">${b.model || ''}${b.paired === false ? ' · unpaired' : ''}</span></label>`).join('')}</div>
+            <input class="field" id="hpin-${zi}" placeholder="Setup PIN (e.g. 031-45-154)" value="${bridges[0].suggestedPin || ''}">
+            <button class="big primary" id="hpair-${zi}">Pair &amp; list devices</button>`;
+          document.getElementById(`hpair-${zi}`).onclick = () => hapPair(zi);
+        } catch (e) { homebridge.toast.error(e.message || String(e), 'Discovery failed'); res.innerHTML = ''; }
+        finally { homebridge.hideSpinner(); }
+      };
+    }
+
+    async function hapPair(zi) {
+      const b = window[`_hb${zi}`][+document.querySelector(`input[name="hb${zi}"]:checked`).value];
+      const pin = val(`hpin-${zi}`);
+      if (!pin) return homebridge.toast.error('Enter the setup PIN');
+      const res = document.getElementById(`res-${zi}`);
+      res.innerHTML = '<p class="muted">Pairing… (can take ~10s)</p>';
+      homebridge.showSpinner();
+      try {
+        const devices = await homebridge.request('/hap/accessories', { deviceId: b.deviceId, address: b.address, port: b.port, pin });
+        window[`_d${zi}`] = devices;
+        if (!devices.length) return res.innerHTML = '<p class="muted">Paired, but found nothing controllable.</p>';
+        res.innerHTML = `<p class="muted" style="margin-top:12px">Pick your device:</p>
+          <div class="pick">${devices.map((d, i) => `<label><input type="radio" name="d${zi}" value="${i}" ${i ? '' : 'checked'}> <b>${d.name}</b> <span class="muted">${d.model || ''}</span></label>`).join('')}</div>
+          ${jobChecks(zi, [devices[0].role || 'heat'])}
+          <button class="big primary" id="pick-${zi}">Add to room</button>`;
+        document.getElementById(`pick-${zi}`).onclick = () => {
+          const d = window[`_d${zi}`][+document.querySelector(`input[name="d${zi}"]:checked`).value];
+          addToRoom(zi, d.name, d.config, checkedJobs(zi));
+        };
+      } catch (e) { res.innerHTML = `<p class="muted">Pairing failed: ${e.message || e}. Double-check the PIN.</p>`; }
+      finally { homebridge.hideSpinner(); }
     }
 
     function jobChecks(zi, preset) {
