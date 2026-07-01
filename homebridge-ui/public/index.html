@@ -30,11 +30,11 @@
   </style>
 </head>
 <body>
-  <h2>Climate setup</h2>
-  <p class="sub">Add a room, then tell it what heats, cools, or freshens it. Sign-ins stay on your Homebridge — nowhere else.</p>
+  <h2>Thermostats</h2>
+  <p class="sub">Create a thermostat for an area, then add the devices it controls (heat, A/C, fans). Each becomes one thermostat you can place in any HomeKit room. Sign-ins stay on your Homebridge — nowhere else.</p>
 
   <div id="rooms"></div>
-  <button class="big ghost" id="addRoom">＋ Add a room</button>
+  <button class="big ghost" id="addRoom">＋ Add a thermostat</button>
 
   <div class="footer">
     <button class="big primary" id="save" style="flex:1">Save &amp; finish</button>
@@ -81,7 +81,7 @@
 
     function render() {
       const root = document.getElementById('rooms');
-      root.innerHTML = config.zones.length ? '' : '<p class="muted">No rooms yet — add one below.</p>';
+      root.innerHTML = config.zones.length ? '' : '<p class="muted">No thermostats yet — add one below.</p>';
       config.zones.forEach((zone, zi) => root.appendChild(roomCard(zone, zi)));
     }
 
@@ -92,9 +92,9 @@
         `<div class="thing"><span>${JOBS.find(j => j[0] === t.job)?.[1].split(' ')[0] || ''}</span> ${t.name}
            <button class="x" data-rm="${zi}:${t.job}:${t.name}">✕</button></div>`).join('');
       el.innerHTML = `
-        <input class="room-name" value="${zone.name || ''}" placeholder="Room name (e.g. Rear Bedroom)" data-z="${zi}">
+        <input class="room-name" value="${zone.name || ''}" placeholder="Thermostat name (e.g. Rear Bedroom)" data-z="${zi}">
         <div class="things">${things || '<span class="muted">Nothing added yet.</span>'}</div>
-        <button class="big ghost" data-add="${zi}">＋ Add a device to this room</button>
+        <button class="big ghost" data-add="${zi}">＋ Add a device it controls</button>
         <div id="wiz-${zi}"></div>`;
       el.querySelector('.room-name').onchange = e => zone.name = e.target.value;
       el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeThing(b.dataset.rm));
@@ -195,12 +195,23 @@
       render();
     };
     document.getElementById('save').onclick = async () => {
-      const blocks = await homebridge.getPluginConfig();
-      const i = blocks.findIndex(b => b.platform === 'Thermocombobulator');
-      i >= 0 ? blocks[i] = config : blocks.push(config);
-      await homebridge.updatePluginConfig(blocks);
-      await homebridge.savePluginConfig();
-      homebridge.toast.success('Saved! Restart Homebridge to apply.', 'All set');
+      try {
+        const blocks = await homebridge.getPluginConfig();
+        const i = blocks.findIndex(b => b.platform === 'Thermocombobulator');
+        i >= 0 ? blocks[i] = config : blocks.push(config);
+        await homebridge.updatePluginConfig(blocks);
+        await homebridge.savePluginConfig();
+        // Verify it actually persisted (config-ui-x can silently strip against the schema).
+        const after = await homebridge.getPluginConfig();
+        const saved = (after.find(b => b.platform === 'Thermocombobulator')?.zones || []).length;
+        if (saved !== config.zones.length) {
+          homebridge.toast.error(`Only ${saved}/${config.zones.length} saved — some data was dropped.`, 'Partial save');
+        } else {
+          homebridge.toast.success(`Saved ${saved} thermostat(s). Restart Homebridge to apply.`, 'All set');
+        }
+      } catch (e) {
+        homebridge.toast.error(e.message || String(e), 'Save failed');
+      }
     };
 
     load();

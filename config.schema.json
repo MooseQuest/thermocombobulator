@@ -3,7 +3,7 @@
   "pluginType": "platform",
   "singular": true,
   "customUi": true,
-  "headerDisplay": "Set up climate control for a room. Use the **Add device** buttons in the setup screen to sign in and find your thermostats, A/Cs, and purifiers — everything else just works on smart defaults.",
+  "headerDisplay": "Create a virtual **thermostat** for an area, then add the devices it controls (heat, A/C, fans). Each one becomes a single thermostat you place in any HomeKit room. Use the setup screen's **Add** buttons to sign in and find your devices.",
   "footerDisplay": "Need help? https://github.com/moosequest/thermocombobulator",
   "schema": {
     "type": "object",
@@ -13,13 +13,17 @@
       "pollIntervalSeconds": { "title": "Refresh every (seconds)", "type": "integer", "default": 30, "minimum": 5 },
       "zones": {
         "type": "array",
-        "title": "Rooms",
+        "title": "Thermostats",
         "items": {
           "type": "object",
+          "additionalProperties": true,
           "properties": {
-            "name": { "title": "Room", "type": "string", "required": true, "placeholder": "e.g. Rear Bedroom" },
+            "name": { "title": "Thermostat name", "type": "string", "required": true, "placeholder": "e.g. Rear Bedroom" },
+            "sensors": { "type": "object", "additionalProperties": true },
+            "devices": { "type": "object", "additionalProperties": true },
             "control": {
               "type": "object",
+              "additionalProperties": true,
               "properties": {
                 "defaultMode": { "title": "Mode", "type": "string", "default": "auto",
                   "oneOf": [
@@ -48,8 +52,8 @@
     {
       "key": "zones",
       "type": "array",
-      "title": "Rooms",
-      "buttonText": "Add room",
+      "title": "Thermostats",
+      "buttonText": "Add a thermostat",
       "items": [
         "zones[].name",
         "zones[].control.defaultMode",
