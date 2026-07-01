@@ -56,3 +56,40 @@ test('no temperature reading holds heat/cool off but still manages humidity', ()
   const p = decide(st(null, 30), sp, 'heat', { humidityTarget: 45 }, 'idle');
   assert.equal(p.heat, false); assert.equal(p.humidify, true);
 });
+
+// --- seasonal changeover (the "don't heat in summer" logic) ---
+const season = { season: 'auto' as const, changeoverTempC: 16, seasonDeadbandC: 3 };
+
+test('SUMMER: room below setpoint but hot outside → heat locked out, idle (no baseboard)', () => {
+  // 70°F room (21.1°C), target heat 22 / cool 22.2, 100°F outside (37.8°C).
+  const p = decide(st(21.1, null, 37.8), { heatC: 22, coolC: 22.2 }, 'auto', season, 'idle');
+  assert.equal(p.heat, false);         // never heats in summer
+  assert.equal(p.active, 'idle');      // nothing to do until it rises past the cool setpoint
+});
+
+test('SUMMER: room above cool setpoint → A/C engages', () => {
+  const p = decide(st(24, null, 37.8), { heatC: 22, coolC: 22.2 }, 'auto', season, 'idle');
+  assert.equal(p.cool, true); assert.equal(p.heat, false);
+});
+
+test('WINTER: room above setpoint but cold outside → cool locked out (no A/C)', () => {
+  const p = decide(st(24, null, -5), { heatC: 22, coolC: 22.2 }, 'auto', season, 'idle');
+  assert.equal(p.cool, false); assert.equal(p.active, 'idle');
+});
+
+test('WINTER: room below heat setpoint → heat engages', () => {
+  const p = decide(st(20, null, -5), { heatC: 22, coolC: 22.2 }, 'auto', season, 'idle');
+  assert.equal(p.heat, true); assert.equal(p.cool, false);
+});
+
+test('explicit HEAT ignores season (user is boss)', () => {
+  const p = decide(st(20, null, 37.8), { heatC: 22, coolC: 24 }, 'heat', season, 'idle');
+  assert.equal(p.heat, true); // hot outside, but user forced heat
+});
+
+test('shoulder season allows both', () => {
+  const cold = decide(st(20, null, 16), { heatC: 22, coolC: 24 }, 'auto', season, 'idle');
+  assert.equal(cold.heat, true);
+  const warm = decide(st(25, null, 16), { heatC: 22, coolC: 24 }, 'auto', season, 'idle');
+  assert.equal(warm.cool, true);
+});

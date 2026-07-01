@@ -47,6 +47,30 @@ export interface Setpoints {
 }
 
 /**
+ * Seasonal changeover: which systems Auto is allowed to use. This is what stops the baseboard
+ * from firing in summer just because the room dipped below setpoint. Explicit heat/cool modes
+ * bypass this (the user is in charge); only Auto consults it.
+ */
+export function seasonalAllowance(
+  control: ZoneControlConfig | undefined,
+  outdoorTempC: number | null,
+): { allowHeat: boolean; allowCool: boolean; note: string } {
+  const season = control?.season ?? 'auto';
+  if (season === 'heating') return { allowHeat: true, allowCool: false, note: 'heating season (forced)' };
+  if (season === 'cooling') return { allowHeat: false, allowCool: true, note: 'cooling season (forced)' };
+  if (season === 'both') return { allowHeat: true, allowCool: true, note: 'both allowed' };
+  // 'auto': decide from the outdoor temperature if we have one + a changeover point.
+  if (outdoorTempC != null && control?.changeoverTempC != null) {
+    const dead = control.seasonDeadbandC ?? 3;
+    const co = control.changeoverTempC;
+    if (outdoorTempC > co + dead) return { allowHeat: false, allowCool: true, note: `cooling season (outdoor ${outdoorTempC.toFixed(0)}>${co}°C)` };
+    if (outdoorTempC < co - dead) return { allowHeat: true, allowCool: false, note: `heating season (outdoor ${outdoorTempC.toFixed(0)}<${co}°C)` };
+    return { allowHeat: true, allowCool: true, note: 'shoulder season' };
+  }
+  return { allowHeat: true, allowCool: true, note: 'no changeover configured' };
+}
+
+/**
  * The decision core. Pure function of (state, setpoints, mode, control, previous-active).
  * Implements the interlocks:
  *   - heat and cool are mutually exclusive (never both)
@@ -81,9 +105,15 @@ export function decide(
   const temp = state.currentTempC;
   if (temp == null) return { ...off, ...humidityPlan(), reason: 'no temperature reading; heat/cool held off' };
 
-  // Determine desired active state with hysteresis.
-  const wantHeat = mode === 'heat' || mode === 'auto';
-  const wantCool = mode === 'cool' || mode === 'auto';
+  // Determine which systems are permitted. Explicit heat/cool obey the user; Auto consults the
+  // seasonal changeover so we don't heat in summer / cool in winter.
+  let wantHeat = mode === 'heat';
+  let wantCool = mode === 'cool';
+  let seasonNote = '';
+  if (mode === 'auto') {
+    const a = seasonalAllowance(control, state.outdoorTempC);
+    wantHeat = a.allowHeat; wantCool = a.allowCool; seasonNote = ` [${a.note}]`;
+  }
   const below = temp < sp.heatC - c.tempBandC; // clearly too cold
   const above = temp > sp.coolC + c.tempBandC; // clearly too warm
   const atOrAboveHeat = temp >= sp.heatC;       // reached heat target (stop heating)
@@ -121,6 +151,7 @@ export function decide(
     plan.reason = `idle at ${temp.toFixed(1)}°C (heat ${sp.heatC} / cool ${sp.coolC}°C)`;
   }
 
+  plan.reason += seasonNote;
   return plan;
 }
 

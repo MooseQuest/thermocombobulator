@@ -47,8 +47,17 @@ export class ZoneAccessory {
       .onGet(() => ctx.active!)
       .onSet((v) => { ctx.active = Number(v); this.kick(); });
 
-    // Target mode (auto/heat/cool)
-    this.service.getCharacteristic(Characteristic.TargetHeaterCoolerState)
+    // Target mode (auto/heat/cool) — only offer modes the zone can actually do.
+    const S = Characteristic.TargetHeaterCoolerState;
+    const hasHeat = !!zone.devices.heat?.length;
+    const hasCool = !!zone.devices.cool?.length;
+    const validModes: number[] = [];
+    if (hasHeat || hasCool) validModes.push(S.AUTO);   // "let the plugin manage it"
+    if (hasHeat) validModes.push(S.HEAT);
+    if (hasCool) validModes.push(S.COOL);
+    if (!validModes.length) validModes.push(S.AUTO);
+    this.service.getCharacteristic(S)
+      .setProps({ validValues: validModes })
       .onGet(() => ctx.mode!)
       .onSet((v) => { ctx.mode = Number(v); this.kick(); });
 

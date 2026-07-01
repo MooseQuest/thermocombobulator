@@ -43,6 +43,14 @@
                   { "title": "Cool", "enum": ["cool"] },
                   { "title": "Auto", "enum": ["auto"] }
                 ] },
+                "season": { "title": "Season (Auto mode)", "type": "string", "default": "auto", "description": "Stops heat in summer / A/C in winter. 'auto' decides from outdoor temp.", "oneOf": [
+                  { "title": "Auto (from outdoor temp)", "enum": ["auto"] },
+                  { "title": "Heating season", "enum": ["heating"] },
+                  { "title": "Cooling season", "enum": ["cooling"] },
+                  { "title": "Both (no lockout)", "enum": ["both"] }
+                ] },
+                "changeoverTempC": { "title": "Changeover outdoor temp (°C)", "type": "number", "description": "Above this = cooling season (heat locked out); below = heating season. Needs an outdoor sensor." },
+                "seasonDeadbandC": { "title": "Season shoulder band (°C)", "type": "number", "default": 3 },
                 "tempBandC": { "title": "Temp hysteresis band (°C)", "type": "number", "default": 0.5 },
                 "supplementalDeltaC": { "title": "Supplemental-heat delta (°C)", "type": "number", "default": 2 },
                 "circulateFans": { "title": "Circulate fans during heat/cool", "type": "boolean", "default": false },

@@ -78,6 +78,16 @@ export interface SensorConfig {
 export interface ZoneControlConfig {
   /** Default HeaterCooler mode at startup: 'off' | 'heat' | 'cool' | 'auto'. */
   defaultMode?: 'off' | 'heat' | 'cool' | 'auto';
+  /**
+   * Seasonal changeover — which systems Auto mode is allowed to use, so heat never fires in
+   * summer (and A/C never fires in winter). 'auto' decides from the outdoor temperature via
+   * changeoverTempC; 'heating'/'cooling' force a season; 'both' disables the lockout.
+   */
+  season?: 'auto' | 'heating' | 'cooling' | 'both';
+  /** Outdoor °C above which it's cooling season (heat locked out); below is heating season. */
+  changeoverTempC?: number;
+  /** Shoulder band (°C) around changeoverTempC where BOTH heat and cool are allowed (default 3). */
+  seasonDeadbandC?: number;
   /** Hysteresis band in °C around the setpoint to avoid short-cycling (default 0.5). */
   tempBandC?: number;
   /** Extra °C below setpoint at which supplemental heat (space heaters) is staged in (default 2). */
