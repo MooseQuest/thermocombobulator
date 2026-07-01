@@ -1,6 +1,16 @@
 const { HomebridgePluginUiServer, RequestError } = require('@homebridge/plugin-ui-utils');
 const { exec } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+
+/** Reject a promise if it doesn't settle in `ms` — so a stuck cloud call can't hang the UI forever. */
+function withTimeout(promise, ms, label) {
+  let t;
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(t)),
+    new Promise((_, rej) => { t = setTimeout(() => rej(new Error(`${label} timed out after ${ms / 1000}s — try again in a minute.`)), ms); }),
+  ]);
+}
 
 /**
  * Custom-UI server for Thermocombobulator onboarding. It runs the vendor logins/discovery
@@ -21,8 +31,8 @@ class UiServer extends HomebridgePluginUiServer {
   }
 
   async wrap(fn) {
-    try { return await fn(); }
-    catch (e) { throw new RequestError(e.message || String(e), { status: 400 }); }
+    try { return await withTimeout(Promise.resolve().then(fn), 45000, 'Request'); }
+    catch (e) { console.error('[thermocombobulator-ui]', e.message); throw new RequestError(e.message || String(e), { status: 400 }); }
   }
 
   requireDep(name, hint) {
@@ -30,15 +40,33 @@ class UiServer extends HomebridgePluginUiServer {
     catch { throw new Error(`This device type needs the optional '${name}' package on the Homebridge server. ${hint || ''}`); }
   }
 
-  // --- Mysa: SDK login + list thermostats ---
+  // --- Mysa: reuse a persisted session (refresh token) so we don't re-login (Cognito throttles that) ---
   async mysa({ email, password }) {
     if (!email || !password) throw new Error('Mysa email and password are required.');
     let MysaApiClient;
     try { ({ MysaApiClient } = require('mysa-js-sdk')); }
     catch { throw new Error("Install 'mysa-js-sdk' on the Homebridge server to onboard Mysa."); }
-    const client = new MysaApiClient();
-    await client.login(email, password);
-    const raw = await client.getDevices();
+
+    const dir = this.homebridgeStoragePath || '/tmp';
+    const file = path.join(dir, `.tcb-mysa-${Buffer.from(email).toString('hex').slice(0, 20)}.json`);
+    let saved;
+    try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* none yet */ }
+
+    const client = new MysaApiClient(saved);
+    // Persist the session whenever it changes (login + token refreshes) so future runs skip the password login.
+    if (typeof client.on === 'function') {
+      client.on('sessionChanged', (s) => {
+        try { s ? fs.writeFileSync(file, JSON.stringify(s)) : fs.existsSync(file) && fs.unlinkSync(file); } catch { /* best effort */ }
+      });
+    }
+    if (!client.isAuthenticated) {
+      console.log('[thermocombobulator-ui] Mysa: no saved session, logging in…');
+      await withTimeout(client.login(email, password), 25000, 'Mysa login');
+    } else {
+      console.log('[thermocombobulator-ui] Mysa: reusing saved session');
+    }
+    const raw = await withTimeout(client.getDevices(), 20000, 'Mysa device list');
+    try { if (client.session) fs.writeFileSync(file, JSON.stringify(client.session)); } catch { /* best effort */ }
     // The SDK wraps the map in a `DevicesObj` (also seen as `Devices`); descend into it.
     const devMap = (raw && typeof raw === 'object' && (raw.DevicesObj || raw.Devices || raw.devices)) || raw || {};
     return Object.entries(devMap)
