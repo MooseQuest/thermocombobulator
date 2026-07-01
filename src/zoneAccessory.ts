@@ -143,4 +143,19 @@ export class ZoneAccessory {
     this.outdoorTempC = state.outdoorTempC;
     this.reflect(plan);
   }
+
+  /** Latest room temperature (for a group thermostat to average across members). */
+  get roomTempC(): number | null { return this.currentTempC; }
+
+  /** Applied by a group thermostat: overwrite this thermostat's mode + setpoints, reflect, re-run. */
+  applyGroupSetting(o: { active: number; mode: number; heatC: number; coolC: number }): void {
+    const ctx = this.accessory.context as { active: number; mode: number; heatC: number; coolC: number };
+    ctx.active = o.active; ctx.mode = o.mode; ctx.heatC = o.heatC; ctx.coolC = o.coolC;
+    const C = this.platform.Characteristic;
+    this.service.updateCharacteristic(C.Active, o.active);
+    this.service.updateCharacteristic(C.TargetHeaterCoolerState, o.mode);
+    this.service.updateCharacteristic(C.HeatingThresholdTemperature, o.heatC);
+    this.service.updateCharacteristic(C.CoolingThresholdTemperature, o.coolC);
+    this.update().catch((e) => this.platform.log.warn(`[${this.zone.name}] group update failed: ${(e as Error).message}`));
+  }
 }

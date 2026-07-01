@@ -45,6 +45,18 @@
             }
           }
         }
+      },
+      "groups": {
+        "type": "array",
+        "title": "Group thermostats",
+        "items": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "name": { "title": "Group name", "type": "string", "placeholder": "e.g. Whole Home" },
+            "members": { "type": "array", "items": { "type": "string" } }
+          }
+        }
       }
     }
   },

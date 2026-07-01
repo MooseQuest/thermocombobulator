@@ -203,10 +203,33 @@ export class ClimateEngine {
     };
   }
 
+  // Send-on-change: remember the last command sent to each device so we only actuate on a real
+  // change (not every 30s tick) — avoids hammering cloud APIs and hitting rate limits. Re-asserted
+  // every REASSERT_MS as a safety net in case a device drifted or was changed out from under us.
+  private lastCmd = new Map<Adapter, { sig: string; at: number }>();
+  private lastWarn = new Map<Adapter, string>();
+  private static readonly REASSERT_MS = 10 * 60 * 1000;
+
+  private async drive(a: Adapter, sig: string, act: () => Promise<void>): Promise<void> {
+    const prev = this.lastCmd.get(a);
+    const now = Date.now();
+    if (prev && prev.sig === sig && now - prev.at < ClimateEngine.REASSERT_MS) return;
+    try {
+      await act();
+      this.lastCmd.set(a, { sig, at: now });
+      this.lastWarn.delete(a); // recovered — allow future warnings
+    } catch (e) {
+      // A failed command retries each tick; warn once per distinct failure, then stay quiet.
+      const w = `${sig}:${(e as Error).message}`;
+      if (this.lastWarn.get(a) !== w) {
+        this.log.warn(`[${this.zone.name}] device command failed (${sig}): ${(e as Error).message || 'unknown'}`);
+        this.lastWarn.set(a, w);
+      }
+    }
+  }
+
   private async setRole(adapters: Adapter[], on: boolean): Promise<void> {
-    await Promise.all(adapters.map(async (a) => {
-      try { await a.setOn(on); } catch (e) { this.log.warn(`[${this.zone.name}] device setOn(${on}) failed: ${(e as Error).message}`); }
-    }));
+    await Promise.all(adapters.map((a) => this.drive(a, on ? 'on' : 'off', () => a.setOn(on))));
   }
 
   /**
@@ -215,11 +238,13 @@ export class ClimateEngine {
    * Dumb on/off devices are bang-banged on the temperature demand.
    */
   private async driveRole(adapters: Adapter[], allowed: boolean, demand: boolean, setpointC: number): Promise<void> {
-    await Promise.all(adapters.map(async (a) => {
-      try {
-        if (a.program) { if (allowed) await a.program({ setpointC }); else await a.setOn(false); }
-        else await a.setOn(demand);
-      } catch (e) { this.log.warn(`[${this.zone.name}] device drive failed: ${(e as Error).message}`); }
+    await Promise.all(adapters.map((a) => {
+      if (a.program) {
+        return allowed
+          ? this.drive(a, `prog:${setpointC}`, () => a.program!({ setpointC }))
+          : this.drive(a, 'off', () => a.setOn(false));
+      }
+      return this.drive(a, demand ? 'on' : 'off', () => a.setOn(demand));
     }));
   }
 

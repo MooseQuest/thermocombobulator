@@ -36,6 +36,11 @@
   <div id="rooms"></div>
   <button class="big ghost" id="addRoom">＋ Add a thermostat</button>
 
+  <h2 style="margin-top:22px">Group thermostats</h2>
+  <p class="sub">Optional. Make one thermostat that steers several rooms at once (e.g. Whole Home). It commands the room thermostats — it never fights them.</p>
+  <div id="groups"></div>
+  <button class="big ghost" id="addGroup">＋ Add a group thermostat</button>
+
   <div class="footer">
     <button class="big primary" id="save" style="flex:1">Save &amp; finish</button>
   </div>
@@ -70,6 +75,7 @@
       config = blocks.find(b => b.platform === 'Thermocombobulator')
         || (blocks.push({ platform: 'Thermocombobulator', name: 'Thermocombobulator', zones: [] }), blocks[blocks.length - 1]);
       config.zones = config.zones || [];
+      config.groups = config.groups || [];
       render();
     }
 
@@ -83,6 +89,34 @@
       const root = document.getElementById('rooms');
       root.innerHTML = config.zones.length ? '' : '<p class="muted">No thermostats yet — add one below.</p>';
       config.zones.forEach((zone, zi) => root.appendChild(roomCard(zone, zi)));
+      renderGroups();
+    }
+
+    function renderGroups() {
+      const root = document.getElementById('groups');
+      root.innerHTML = '';
+      config.groups.forEach((group, gi) => root.appendChild(groupCard(group, gi)));
+    }
+
+    function groupCard(group, gi) {
+      const el = document.createElement('div');
+      el.className = 'room';
+      const names = config.zones.map(z => z.name).filter(Boolean);
+      const members = group.members || [];
+      const checks = names.length
+        ? names.map(n => `<label><input type="checkbox" class="gm-${gi}" value="${n}" ${members.includes(n) ? 'checked' : ''}> ${n}</label>`).join('')
+        : '<span class="muted">Add some thermostats first, then pick which ones this group steers.</span>';
+      el.innerHTML = `
+        <input class="room-name" value="${group.name || ''}" placeholder="Group name (e.g. Whole Home)" data-g="${gi}">
+        <p class="muted" style="margin-top:8px">Steers these thermostats:</p>
+        <div class="checks">${checks}</div>
+        <button class="x" data-rmg="${gi}" style="margin-top:8px">✕ Remove group</button>`;
+      el.querySelector('.room-name').onchange = e => group.name = e.target.value;
+      el.querySelectorAll(`.gm-${gi}`).forEach(cb => cb.onchange = () => {
+        group.members = [...el.querySelectorAll(`.gm-${gi}:checked`)].map(c => c.value);
+      });
+      el.querySelector(`[data-rmg="${gi}"]`).onclick = () => { config.groups.splice(gi, 1); render(); };
+      return el;
     }
 
     function roomCard(zone, zi) {
@@ -91,12 +125,17 @@
       const things = thingsOf(zone).map((t, ti) =>
         `<div class="thing"><span>${JOBS.find(j => j[0] === t.job)?.[1].split(' ')[0] || ''}</span> ${t.name}
            <button class="x" data-rm="${zi}:${t.job}:${t.name}">✕</button></div>`).join('');
+      const seasonVal = zone.control?.season || 'auto';
+      const seasonOpts = [['auto', 'Auto — heat & cool as needed'], ['cooling', 'Cooling only (summer — no heat)'], ['heating', 'Heating only (winter — no A/C)'], ['both', 'Both, always']]
+        .map(([v, l]) => `<option value="${v}" ${v === seasonVal ? 'selected' : ''}>${l}</option>`).join('');
       el.innerHTML = `
         <input class="room-name" value="${zone.name || ''}" placeholder="Thermostat name (e.g. Rear Bedroom)" data-z="${zi}">
         <div class="things">${things || '<span class="muted">Nothing added yet.</span>'}</div>
         <button class="big ghost" data-add="${zi}">＋ Add a device it controls</button>
+        <div class="row" style="margin-top:10px"><label>Season</label><select class="season field" data-z="${zi}">${seasonOpts}</select></div>
         <div id="wiz-${zi}"></div>`;
       el.querySelector('.room-name').onchange = e => zone.name = e.target.value;
+      el.querySelector('.season').onchange = e => { zone.control = zone.control || {}; zone.control.season = e.target.value; };
       el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeThing(b.dataset.rm));
       el.querySelector(`[data-add="${zi}"]`).onclick = () => pickService(zi);
       return el;
@@ -212,6 +251,10 @@
     document.getElementById('addRoom').onclick = () => {
       config.zones.push({ name: '', control: { defaultMode: 'auto', circulateFans: true }, sensors: {}, devices: {} });
       render();
+    };
+    document.getElementById('addGroup').onclick = () => {
+      config.groups.push({ name: '', members: [] });
+      renderGroups();
     };
     document.getElementById('save').onclick = async () => {
       try {

@@ -196,17 +196,20 @@ class MysaAdapter implements Adapter {
 
   async setOn(on: boolean): Promise<void> {
     const c = await this.client();
+    await ensureMysaRealtime(c, this.cfg.deviceId!); // commands go over MQTT — make sure it's up first
     // Undefined temperature keeps the thermostat's current setpoint; mode drives on/off.
     await c.setDeviceState(this.cfg.deviceId!, undefined, on ? 'heat' : 'off');
   }
 
   async setTargetTemperature(celsius: number): Promise<void> {
     const c = await this.client();
+    await ensureMysaRealtime(c, this.cfg.deviceId!);
     await c.setDeviceState(this.cfg.deviceId!, celsius, 'heat');
   }
 
   async program(opts: { setpointC?: number }): Promise<void> {
     const c = await this.client();
+    await ensureMysaRealtime(c, this.cfg.deviceId!);
     await c.setDeviceState(this.cfg.deviceId!, opts.setpointC, 'heat');
   }
 

@@ -93,3 +93,24 @@ test('shoulder season allows both', () => {
   const warm = decide(st(25, null, 16), { heatC: 22, coolC: 24 }, 'auto', season, 'idle');
   assert.equal(warm.cool, true);
 });
+
+// --- delegate-don't-force: allow flags arm regulating devices; setpoints carried through ---
+test('delegate: allow flags + setpoints exposed for regulating devices', () => {
+  const p = decide(st(22), sp, 'auto', {}, 'idle'); // deadband, but both systems permitted
+  assert.equal(p.allowHeat, true); assert.equal(p.allowCool, true);
+  assert.equal(p.heatSetpointC, 20); assert.equal(p.coolSetpointC, 24);
+  assert.equal(p.heat, false); assert.equal(p.cool, false); // no dumb demand in the deadband
+});
+
+test('SUMMER (Cool mode): heat disallowed so heat devices are turned off', () => {
+  const p = decide(st(18), sp, 'cool', {}, 'idle'); // cold room, but cooling-only
+  assert.equal(p.allowHeat, false); // Mysa gets set OFF
+  assert.equal(p.allowCool, true);
+});
+
+test('regulating devices stay armed even when the room sensor blips', () => {
+  const p = decide(st(null), sp, 'cool', {}, 'idle'); // no reading
+  assert.equal(p.allowCool, true);   // A/C still armed at its setpoint (it self-regulates)
+  assert.equal(p.coolSetpointC, 24);
+  assert.equal(p.cool, false);       // but no dumb bang-bang without a reading
+});

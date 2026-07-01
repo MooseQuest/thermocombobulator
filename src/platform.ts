@@ -4,6 +4,7 @@ import type {
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import type { ThermocombobulatorConfig, ZoneConfig } from './types';
 import { ZoneAccessory } from './zoneAccessory';
+import { GroupAccessory } from './groupAccessory';
 
 export class ThermocombobulatorPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
@@ -35,26 +36,42 @@ export class ThermocombobulatorPlatform implements DynamicPlatformPlugin {
     if (!zones.length) { this.log.warn('No zones configured — nothing to do.'); return; }
 
     const seen = new Set<string>();
-    for (const zone of zones) {
-      const uuid = this.api.hap.uuid.generate(`thermocombobulator:${zone.name}`);
+    const byName = new Map<string, ZoneAccessory>();
+    const accessoryFor = (key: string, name: string): PlatformAccessory => {
+      const uuid = this.api.hap.uuid.generate(key);
       seen.add(uuid);
       let accessory = this.accessories.get(uuid);
-      if (accessory) {
-        this.log.info(`Restoring zone "${zone.name}"`);
-      } else {
-        this.log.info(`Adding zone "${zone.name}"`);
-        accessory = new this.api.platformAccessory(zone.name, uuid);
+      if (!accessory) {
+        accessory = new this.api.platformAccessory(name, uuid);
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         this.accessories.set(uuid, accessory);
       }
+      return accessory;
+    };
+
+    for (const zone of zones) {
       try {
-        this.zones.push(new ZoneAccessory(this, accessory, zone as ZoneConfig));
+        const za = new ZoneAccessory(this, accessoryFor(`thermocombobulator:${zone.name}`, zone.name), zone as ZoneConfig);
+        this.zones.push(za);
+        byName.set(zone.name, za);
       } catch (e) {
-        this.log.error(`Zone "${zone.name}" failed to initialise: ${(e as Error).message}`);
+        this.log.error(`Thermostat "${zone.name}" failed to initialise: ${(e as Error).message}`);
       }
     }
 
-    // Remove accessories for zones that no longer exist in config.
+    // Group thermostats fan out to their member room-thermostats (built after the zones exist).
+    for (const group of this.cfg.groups ?? []) {
+      const members = (group.members ?? []).map((n) => byName.get(n)).filter((m): m is ZoneAccessory => !!m);
+      if (!members.length) { this.log.warn(`Group "${group.name}" has no valid members — skipping.`); continue; }
+      try {
+        new GroupAccessory(this, accessoryFor(`thermocombobulator:group:${group.name}`, group.name), group.name, members);
+        this.log.info(`Group "${group.name}" steering ${members.length} thermostat(s).`);
+      } catch (e) {
+        this.log.error(`Group "${group.name}" failed to initialise: ${(e as Error).message}`);
+      }
+    }
+
+    // Remove accessories for zones/groups that no longer exist in config.
     for (const [uuid, accessory] of this.accessories) {
       if (!seen.has(uuid)) {
         this.log.info(`Removing stale zone "${accessory.displayName}"`);

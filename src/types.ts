@@ -127,10 +127,22 @@ export interface ZoneConfig {
   control?: ZoneControlConfig;
 }
 
+/**
+ * A group thermostat: a HeaterCooler that fans its setting out to member room-thermostats (by name),
+ * so you can steer the whole house from one dial. It commands the member thermostats (not their raw
+ * devices), so nothing fights — members still delegate to their own devices.
+ */
+export interface GroupConfig {
+  name: string;
+  members: string[];
+}
+
 export interface ThermocombobulatorConfig extends PlatformConfig {
   /** Shared SmartThings token for any smartthings adapters that don't set their own. */
   smartThingsToken?: string;
   /** How often (seconds) the control loop re-evaluates each zone (default 30). */
   pollIntervalSeconds?: number;
   zones: ZoneConfig[];
+  /** Optional whole-home / area group thermostats that steer member room-thermostats. */
+  groups?: GroupConfig[];
 }
