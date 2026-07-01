@@ -81,4 +81,16 @@ export class HapAdapter implements Adapter {
     }
     if (Object.keys(w).length) await hapClient(this.cfg).setCharacteristics(w);
   }
+
+  // Fan-only circulation: keep the A/C on in its cool mode but raise the cooling threshold so the
+  // compressor won't run, and set a gentle fan speed — the fan moves air without cooling.
+  async circulate(): Promise<void> {
+    const chars = this.cfg.hapChars ?? {};
+    const w: Record<string, unknown> = {};
+    if (chars.on) w[chars.on] = 1;
+    if (chars.targetState && this.cfg.hapTargetStateValue != null) w[chars.targetState] = this.cfg.hapTargetStateValue;
+    if (chars.coolSetpoint) w[chars.coolSetpoint] = 30; // above any occupied-room temp → compressor idle
+    if (chars.fanSpeed) w[chars.fanSpeed] = 40;         // gentle continuous circulation
+    if (Object.keys(w).length) await hapClient(this.cfg).setCharacteristics(w);
+  }
 }

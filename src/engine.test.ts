@@ -128,3 +128,11 @@ test('fresh-air is opt-in and independent of season/temperature', () => {
   assert.equal(p.freshAir, true);  // runs even with no reading, hot outside, cooling season
   assert.equal(p.purify, true);
 });
+
+test('circulate: A/C cools when warm, offers fan-circulate when on but idle', () => {
+  const warm = decide(st(26), sp, 'cool', {}, 'idle');
+  assert.equal(warm.cool, true); assert.equal(warm.circulateCool, false); // actively cooling, not circulating
+  const idle = decide(st(22), sp, 'cool', {}, 'idle');
+  assert.equal(idle.cool, false); assert.equal(idle.circulateCool, true); // on but at temp → circulate
+  assert.equal(decide(st(22), sp, 'off', {}, 'idle').circulateCool, false); // off → no circulate
+});

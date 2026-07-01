@@ -291,6 +291,7 @@
             if (m === 'cool') cfg.hapTargetStateValue = 2;      // COOL
             else if (m === 'heat') cfg.hapTargetStateValue = 1; // HEAT
             // 'auto' keeps the onboarding default (AUTO)
+            if (document.getElementById(`hapcirc-${zi}`)?.checked) cfg.circulateWithFan = true;
           }
           addToRoom(zi, d.name, cfg, checkedJobs(zi));
         };
@@ -314,7 +315,7 @@
           <option value="heat" ${!cool ? 'selected' : ''}>Heat to the target</option>
           <option value="auto">Auto — let the A/C decide</option>
         </select>
-        <p class="muted" style="font-size:12px">Fan speed stays on the A/C's own setting (usually Auto).</p>`;
+        ${cool ? `<label style="display:block;margin-top:10px"><input type="checkbox" id="hapcirc-${zi}"> 🌀 Also run this A/C's fan to circulate air when it isn't cooling</label>` : ''}`;
     }
     function acOptions(zi) {
       return `<p class="muted" style="margin-top:12px">How should this A/C run when engaged?</p>

@@ -30,6 +30,8 @@ export interface Plan {
   /** Independent, year-round layers (not season-gated). */
   purify: boolean;
   freshAir: boolean;
+  /** Thermostat is on but not actively cooling — a circulate-capable A/C may run its fan. */
+  circulateCool: boolean;
   reason: string;
 }
 
@@ -104,7 +106,7 @@ export function decide(
   const off: Plan = {
     active: 'idle', allowHeat: false, allowCool: false, heatSetpointC: sp.heatC, coolSetpointC: sp.coolC,
     heat: false, heatSupplemental: false, cool: false, fan: false, humidify: false, dehumidify: false,
-    purify: false, freshAir: false, reason: '',
+    purify: false, freshAir: false, circulateCool: false, reason: '',
   };
 
   // Humidity is independent of heat/cool and runs in every mode except fully off.
@@ -130,7 +132,7 @@ export function decide(
   // Independent layers run year-round whenever the thermostat is on (not season- or temp-gated):
   // purify defaults on, fresh-air is opt-in.
   const base: Plan = {
-    ...off, allowHeat: wantHeat, allowCool: wantCool,
+    ...off, allowHeat: wantHeat, allowCool: wantCool, circulateCool: true,
     purify: control?.purify !== false, freshAir: !!control?.freshAir, ...humidityPlan(),
   };
 
@@ -174,6 +176,8 @@ export function decide(
     plan.reason = `idle at ${temp.toFixed(1)}°C (heat ${sp.heatC} / cool ${sp.coolC}°C)`;
   }
 
+  // A circulate-capable A/C runs its fan whenever the thermostat is on but not actively cooling.
+  plan.circulateCool = !plan.cool;
   plan.reason += seasonNote;
   return plan;
 }
@@ -191,6 +195,7 @@ export class ClimateEngine {
     const build = (devs?: DeviceConfig[]) => (devs ?? []).map((d) => {
       const a = makeAdapter(d.adapter, log, platformToken);
       a.label = d.name;
+      a.circulateWithFan = d.adapter.circulateWithFan;
       return a;
     });
     this.roles = {
@@ -272,10 +277,28 @@ export class ClimateEngine {
     }));
   }
 
+  /**
+   * Drive the cool role with circulation support: a circulate-capable A/C cools when there's demand,
+   * runs fan-only to circulate when the thermostat is on but idle, and turns off otherwise. A/Cs
+   * without circulateWithFan use the plain delegate model (arm at setpoint whenever cool is allowed).
+   */
+  private async driveCool(adapters: Adapter[], plan: Plan): Promise<void> {
+    await Promise.all(adapters.map((a) => {
+      if (!a.program) return this.drive(a, plan.cool ? 'on' : 'off', () => a.setOn(plan.cool)); // dumb
+      if (a.circulateWithFan && a.circulate) {
+        if (plan.allowCool && plan.cool) return this.drive(a, `cool:${plan.coolSetpointC}`, () => a.program!({ setpointC: plan.coolSetpointC }));
+        if (plan.allowCool && plan.circulateCool) return this.drive(a, 'circulate', () => a.circulate!());
+        return this.drive(a, 'off', () => a.setOn(false));
+      }
+      if (plan.allowCool) return this.drive(a, `cool:${plan.coolSetpointC}`, () => a.program!({ setpointC: plan.coolSetpointC }));
+      return this.drive(a, 'off', () => a.setOn(false));
+    }));
+  }
+
   async apply(plan: Plan): Promise<void> {
     await Promise.all([
       this.driveRole(this.roles.heat, plan.allowHeat, plan.heat, plan.heatSetpointC),
-      this.driveRole(this.roles.cool, plan.allowCool, plan.cool, plan.coolSetpointC),
+      this.driveCool(this.roles.cool, plan),
       this.setRole(this.roles.heatSupplemental, plan.heatSupplemental),
       this.setRole(this.roles.fan, plan.fan),
       this.setRole(this.roles.humidify, plan.humidify),

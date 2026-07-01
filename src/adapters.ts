@@ -24,6 +24,10 @@ export interface Adapter {
    * Presence of this method is how the engine knows a device self-regulates (vs. dumb on/off).
    */
   program?(opts: { setpointC?: number }): Promise<void>;
+  /** Run the device's own fan to circulate air without heating/cooling (A/C fan-only mode). */
+  circulate?(): Promise<void>;
+  /** Set by the engine from config: this A/C should fan-circulate when it isn't actively cooling. */
+  circulateWithFan?: boolean;
 }
 
 export function makeAdapter(cfg: AdapterConfig, log: Logger, platformToken?: string): Adapter {
@@ -299,6 +303,14 @@ class MideaAdapter implements Adapter {
     if (this.cfg.mode) props.mode = MIDEA_MODE[this.cfg.mode];
     if (this.cfg.fanSpeed) props.fanSpeed = MIDEA_FAN[this.cfg.fanSpeed];
     if (opts.setpointC != null) props.temperatureSetpoint = Math.round(opts.setpointC);
+    await ac.setStatus(props);
+  }
+
+  /** Fan-only mode: circulate air without cooling. */
+  async circulate(): Promise<void> {
+    const ac = await mideaAppliance(this.cfg);
+    const props: Record<string, unknown> = { powerOn: true, mode: MIDEA_MODE.fan_only };
+    if (this.cfg.fanSpeed) props.fanSpeed = MIDEA_FAN[this.cfg.fanSpeed];
     await ac.setStatus(props);
   }
 
