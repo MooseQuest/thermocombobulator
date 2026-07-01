@@ -24,6 +24,7 @@ export function makeAdapter(cfg: AdapterConfig, log: Logger, platformToken?: str
     case 'smartthings': return new SmartThingsAdapter(cfg, log, platformToken);
     case 'mysa': return new MysaAdapter(cfg, log);
     case 'midea': return new MideaAdapter(cfg, log);
+    case 'nest': return new NestAdapter(cfg, log);
     default: throw new Error(`Unknown adapter type: ${(cfg as AdapterConfig).type}`);
   }
 }
@@ -244,6 +245,70 @@ class MideaAdapter implements Adapter {
     const prop = this.cfg.sensorProperty ?? 'temperature';
     const v = prop === 'humidity' ? s.humidity : (s.indoorTemperature ?? s.temperature);
     if (v == null) throw new Error(`midea read: no ${prop}`);
+    return Number(v);
+  }
+}
+
+/**
+ * Nest — Google Smart Device Management (SDM) API. Requires a Device Access project
+ * ($5 one-time) + OAuth (clientId/secret/refreshToken/projectId). No extra npm dep — plain REST.
+ * Used as a heat OR cool member (cfg.mode), or as a temperature/humidity sensor.
+ */
+const nestTokens = new Map<string, { token: string; exp: number }>();
+async function nestAccessToken(cfg: AdapterConfig): Promise<string> {
+  const key = cfg.nestRefreshToken!;
+  const cached = nestTokens.get(key);
+  const now = Date.now();
+  if (cached && cached.exp > now + 60_000) return cached.token;
+  const body = new URLSearchParams({
+    client_id: cfg.nestClientId!, client_secret: cfg.nestClientSecret!,
+    refresh_token: cfg.nestRefreshToken!, grant_type: 'refresh_token',
+  });
+  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', body });
+  if (!r.ok) throw new Error(`nest token refresh -> ${r.status}`);
+  const j = await r.json() as { access_token: string; expires_in: number };
+  nestTokens.set(key, { token: j.access_token, exp: now + j.expires_in * 1000 });
+  return j.access_token;
+}
+
+class NestAdapter implements Adapter {
+  private base = 'https://smartdevicemanagement.googleapis.com/v1';
+  constructor(private cfg: AdapterConfig, private log: Logger) {
+    for (const f of ['nestProjectId', 'nestClientId', 'nestClientSecret', 'nestRefreshToken', 'deviceId'] as const) {
+      if (!cfg[f]) throw new Error(`nest adapter: ${f} is required (from the Device Access setup)`);
+    }
+  }
+  private devicePath() { return `enterprises/${this.cfg.nestProjectId}/devices/${this.cfg.deviceId}`; }
+  private async auth() { return { Authorization: `Bearer ${await nestAccessToken(this.cfg)}` }; }
+
+  private async cmd(command: string, params: Record<string, unknown>): Promise<void> {
+    const r = await fetch(`${this.base}/${this.devicePath()}:executeCommand`, {
+      method: 'POST', headers: { ...(await this.auth()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, params }),
+    });
+    if (!r.ok) throw new Error(`nest ${command} -> ${r.status}`);
+  }
+
+  async setOn(on: boolean): Promise<void> {
+    const mode = on ? (this.cfg.mode === 'cool' ? 'COOL' : 'HEAT') : 'OFF';
+    await this.cmd('sdm.devices.commands.ThermostatMode.SetMode', { mode });
+  }
+
+  async setTargetTemperature(celsius: number): Promise<void> {
+    const cool = this.cfg.mode === 'cool';
+    await this.cmd(`sdm.devices.commands.ThermostatTemperatureSetpoint.Set${cool ? 'Cool' : 'Heat'}`,
+      cool ? { coolCelsius: celsius } : { heatCelsius: celsius });
+  }
+
+  async read(): Promise<number> {
+    const r = await fetch(`${this.base}/${this.devicePath()}`, { headers: await this.auth() });
+    if (!r.ok) throw new Error(`nest read -> ${r.status}`);
+    const j = await r.json() as { traits: Record<string, Record<string, number>> };
+    const t = j.traits;
+    const v = this.cfg.sensorProperty === 'humidity'
+      ? t['sdm.devices.traits.Humidity']?.ambientHumidityPercent
+      : t['sdm.devices.traits.Temperature']?.ambientTemperatureCelsius;
+    if (v == null) throw new Error(`nest read: no ${this.cfg.sensorProperty ?? 'temperature'}`);
     return Number(v);
   }
 }

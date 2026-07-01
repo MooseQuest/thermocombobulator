@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px; }
+    h2 { margin: 4px 0 12px; } h3 { margin: 0; }
+    .muted { color: #888; font-size: 0.85em; }
+    .zone { border: 1px solid #4444; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .zone-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .members { margin: 8px 0; }
+    .member { display: flex; justify-content: space-between; padding: 4px 8px; border-radius: 6px; background: #8881; margin: 3px 0; font-size: 0.9em; }
+    .role { display: inline-block; min-width: 74px; font-weight: 600; text-transform: capitalize; }
+    button { cursor: pointer; border: 1px solid #4446; background: #7773; color: inherit; border-radius: 6px; padding: 5px 10px; font-size: 0.9em; }
+    button.primary { background: #2d7ff9; color: #fff; border-color: #2d7ff9; }
+    button.danger { color: #e55; }
+    input, select { padding: 6px 8px; border-radius: 6px; border: 1px solid #4446; background: transparent; color: inherit; width: 100%; box-sizing: border-box; }
+    .row { display: grid; grid-template-columns: 130px 1fr; gap: 8px; align-items: center; margin: 6px 0; }
+    .wizard { border: 1px dashed #2d7ff9; border-radius: 8px; padding: 12px; margin-top: 8px; background: #2d7ff911; }
+    .devlist label { display: block; padding: 5px; border-radius: 6px; }
+    .devlist label:hover { background: #8881; }
+    .roles { display: flex; flex-wrap: wrap; gap: 10px; }
+    .roles label { font-weight: normal; }
+    .bar { display: flex; gap: 8px; margin-top: 12px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h2>Thermocombobulator — Zones &amp; Devices</h2>
+  <p class="muted">Build a virtual climate zone, then add devices to it. Pick a role, pick the service,
+    sign in, and choose your device — credentials go only to your Homebridge server.</p>
+
+  <div id="zones"></div>
+  <div class="bar">
+    <button class="primary" id="addZone">+ Add zone</button>
+    <button id="save">Save</button>
+  </div>
+
+  <script>
+    const BRANDS = {
+      mysa:        { label: 'Mysa (thermostat)', discover: '/mysa/discover',
+                     fields: [{ k: 'email', t: 'email', label: 'Mysa email' }, { k: 'password', t: 'password', label: 'Mysa password' }] },
+      midea:       { label: 'Midea (window A/C)', discover: '/midea/discover',
+                     fields: [{ k: 'user', t: 'email', label: 'MSmartHome email' }, { k: 'password', t: 'password', label: 'MSmartHome password' }] },
+      nest:        { label: 'Nest (thermostat)', discover: '/nest/discover',
+                     help: 'Needs a Google Device Access project ($5 one-time) + OAuth credentials.',
+                     fields: [{ k: 'nestProjectId', label: 'Device Access project ID' }, { k: 'nestClientId', label: 'OAuth client ID' },
+                              { k: 'nestClientSecret', t: 'password', label: 'OAuth client secret' }, { k: 'nestRefreshToken', t: 'password', label: 'OAuth refresh token' }] },
+      smartthings: { label: 'SmartThings', discover: '/smartthings/discover',
+                     fields: [{ k: 'token', t: 'password', label: 'SmartThings token' }] },
+      http:        { label: 'HTTP / generic', manual: true },
+      command:     { label: 'Shell command', manual: true },
+    };
+    const ROLES = ['heat', 'cool', 'fan', 'humidify', 'dehumidify', 'temperature sensor', 'humidity sensor'];
+
+    let config;
+
+    async function load() {
+      const blocks = await homebridge.getPluginConfig();
+      config = blocks.find(b => b.platform === 'Thermocombobulator');
+      if (!config) { config = { platform: 'Thermocombobulator', name: 'Thermocombobulator', zones: [] }; blocks.push(config); }
+      if (!Array.isArray(config.zones)) config.zones = [];
+      render();
+    }
+
+    function render() {
+      const root = document.getElementById('zones');
+      root.innerHTML = '';
+      config.zones.forEach((zone, zi) => root.appendChild(zoneEl(zone, zi)));
+      if (!config.zones.length) root.innerHTML = '<p class="muted">No zones yet. Add one to begin.</p>';
+    }
+
+    function memberLines(zone) {
+      const out = [];
+      for (const role of ['heat', 'heatSupplemental', 'cool', 'fan', 'humidify', 'dehumidify']) {
+        (zone.devices?.[role] || []).forEach(d => out.push({ role, name: d.name, type: d.adapter?.type }));
+      }
+      if (zone.sensors?.temperature) out.push({ role: 'temp sensor', name: zone.sensors.temperature.name || '(sensor)', type: zone.sensors.temperature.adapter?.type });
+      if (zone.sensors?.humidity) out.push({ role: 'humidity', name: zone.sensors.humidity.name || '(sensor)', type: zone.sensors.humidity.adapter?.type });
+      return out;
+    }
+
+    function zoneEl(zone, zi) {
+      const el = document.createElement('div');
+      el.className = 'zone';
+      const members = memberLines(zone).map(m =>
+        `<div class="member"><span><span class="role">${m.role}</span> ${m.name}</span><span class="muted">${m.type || ''}</span></div>`).join('');
+      el.innerHTML = `
+        <div class="zone-head">
+          <input value="${zone.name || ''}" data-z="${zi}" class="zname" style="max-width:240px" placeholder="Zone name (e.g. Rear Bedroom)">
+          <button class="danger" data-del="${zi}">Remove zone</button>
+        </div>
+        <div class="members">${members || '<span class="muted">No devices yet.</span>'}</div>
+        <button data-add="${zi}">+ Add device</button>
+        <div class="wizard hidden" id="wiz-${zi}"></div>`;
+      el.querySelector('.zname').onchange = e => { zone.name = e.target.value; };
+      el.querySelector(`[data-del="${zi}"]`).onclick = () => { config.zones.splice(zi, 1); render(); };
+      el.querySelector(`[data-add="${zi}"]`).onclick = () => openWizard(zi);
+      return el;
+    }
+
+    function openWizard(zi) {
+      const w = document.getElementById(`wiz-${zi}`);
+      w.classList.remove('hidden');
+      w.innerHTML = `
+        <div class="row"><label>Service</label>
+          <select id="brand-${zi}">${Object.entries(BRANDS).map(([k, b]) => `<option value="${k}">${b.label}</option>`).join('')}</select></div>
+        <div id="brandform-${zi}"></div>`;
+      document.getElementById(`brand-${zi}`).onchange = () => brandForm(zi);
+      brandForm(zi);
+    }
+
+    function brandForm(zi) {
+      const brandKey = document.getElementById(`brand-${zi}`).value;
+      const b = BRANDS[brandKey];
+      const host = document.getElementById(`brandform-${zi}`);
+      if (b.manual) {
+        host.innerHTML = `
+          ${b.help ? `<p class="muted">${b.help}</p>` : ''}
+          <div class="row"><label>Device name</label><input id="mname-${zi}" placeholder="e.g. Space Heater"></div>
+          ${brandKey === 'http'
+            ? `<div class="row"><label>On URL</label><input id="onUrl-${zi}"></div><div class="row"><label>Off URL</label><input id="offUrl-${zi}"></div>`
+            : `<div class="row"><label>On command</label><input id="onCommand-${zi}"></div><div class="row"><label>Off command</label><input id="offCommand-${zi}"></div>`}
+          ${rolesHtml(zi)}
+          <div class="bar"><button class="primary" id="addManual-${zi}">Add device</button></div>`;
+        document.getElementById(`addManual-${zi}`).onclick = () => addManual(zi, brandKey);
+        return;
+      }
+      host.innerHTML = `
+        ${b.help ? `<p class="muted">${b.help}</p>` : ''}
+        ${b.fields.map(f => `<div class="row"><label>${f.label}</label><input id="f-${zi}-${f.k}" type="${f.t || 'text'}"></div>`).join('')}
+        <div class="bar"><button class="primary" id="disc-${zi}">Sign in &amp; discover</button></div>
+        <div id="discres-${zi}"></div>`;
+      document.getElementById(`disc-${zi}`).onclick = () => discover(zi, brandKey);
+    }
+
+    function rolesHtml(zi) {
+      return `<div class="row" style="align-items:start"><label>Roles</label><div class="roles">${
+        ROLES.map((r, i) => `<label><input type="checkbox" class="role-${zi}" value="${r}" ${r === 'heat' ? 'checked' : ''}> ${r}</label>`).join('')}</div></div>`;
+    }
+
+    async function discover(zi, brandKey) {
+      const b = BRANDS[brandKey];
+      const payload = {};
+      b.fields.forEach(f => payload[f.k] = document.getElementById(`f-${zi}-${f.k}`).value);
+      homebridge.showSpinner();
+      try {
+        const devices = await homebridge.request(b.discover, payload);
+        const res = document.getElementById(`discres-${zi}`);
+        if (!devices.length) { res.innerHTML = '<p class="muted">No devices found.</p>'; return; }
+        res.innerHTML = `
+          <p class="muted">Select a device and its role(s):</p>
+          <div class="devlist">${devices.map((d, i) =>
+            `<label><input type="radio" name="dev-${zi}" value="${i}" ${i === 0 ? 'checked' : ''}> <b>${d.name}</b> <span class="muted">${d.model || ''}</span></label>`).join('')}</div>
+          ${rolesHtml(zi)}
+          <div class="bar"><button class="primary" id="addDisc-${zi}">Add device</button></div>`;
+        window[`_disc_${zi}`] = devices;
+        document.getElementById(`addDisc-${zi}`).onclick = () => addDiscovered(zi);
+        homebridge.toast.success(`Found ${devices.length} device(s)`, brandKey);
+      } catch (e) {
+        homebridge.toast.error(e.message || String(e), 'Discovery failed');
+      } finally { homebridge.hideSpinner(); }
+    }
+
+    function selectedRoles(zi) {
+      return [...document.querySelectorAll(`.role-${zi}:checked`)].map(c => c.value);
+    }
+
+    function assign(zone, roles, name, adapter) {
+      zone.devices = zone.devices || {};
+      zone.sensors = zone.sensors || {};
+      for (const r of roles) {
+        if (r === 'temperature sensor') zone.sensors.temperature = { name, adapter: { ...adapter, sensorProperty: 'temperature' } };
+        else if (r === 'humidity sensor') zone.sensors.humidity = { name, adapter: { ...adapter, sensorProperty: 'humidity' } };
+        else { zone.devices[r] = zone.devices[r] || []; zone.devices[r].push({ name, adapter }); }
+      }
+    }
+
+    function addDiscovered(zi) {
+      const zone = config.zones[zi];
+      const devices = window[`_disc_${zi}`];
+      const idx = +document.querySelector(`input[name="dev-${zi}"]:checked`).value;
+      const d = devices[idx];
+      const roles = selectedRoles(zi);
+      if (!roles.length) return homebridge.toast.error('Pick at least one role');
+      assign(zone, roles, d.name, d.config);
+      render();
+    }
+
+    function addManual(zi, brandKey) {
+      const zone = config.zones[zi];
+      const name = document.getElementById(`mname-${zi}`).value || brandKey;
+      const adapter = brandKey === 'http'
+        ? { type: 'http', onUrl: document.getElementById(`onUrl-${zi}`).value, offUrl: document.getElementById(`offUrl-${zi}`).value }
+        : { type: 'command', onCommand: document.getElementById(`onCommand-${zi}`).value, offCommand: document.getElementById(`offCommand-${zi}`).value };
+      const roles = selectedRoles(zi);
+      if (!roles.length) return homebridge.toast.error('Pick at least one role');
+      assign(zone, roles, name, adapter);
+      render();
+    }
+
+    document.getElementById('addZone').onclick = () => {
+      config.zones.push({ name: `Zone ${config.zones.length + 1}`, control: { defaultMode: 'auto', circulateFans: true }, sensors: {}, devices: {} });
+      render();
+    };
+
+    document.getElementById('save').onclick = async () => {
+      const blocks = await homebridge.getPluginConfig();
+      const i = blocks.findIndex(b => b.platform === 'Thermocombobulator');
+      if (i >= 0) blocks[i] = config; else blocks.push(config);
+      await homebridge.updatePluginConfig(blocks);
+      await homebridge.savePluginConfig();
+      homebridge.toast.success('Saved. Restart Homebridge to apply.', 'Thermocombobulator');
+    };
+
+    load();
+  </script>
+</body>
+</html>

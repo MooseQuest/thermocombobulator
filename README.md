@@ -49,6 +49,21 @@ npm install -g homebridge-thermocombobulator
 
 Or in the Homebridge UI, search for **Thermocombobulator**.
 
+## Onboarding (the easy way — Homebridge UI)
+
+Click **Settings** on the plugin in the Homebridge UI to open the onboarding wizard:
+
+1. **Add a zone** (e.g. "Rear Bedroom").
+2. **Add device** → pick the **service** (Mysa, Midea, Nest, SmartThings, or generic HTTP/Command).
+3. **Sign in** — your credentials go straight to *your* Homebridge server, which logs into the
+   service and **discovers your devices**. (Install the optional SDK for the brands you use —
+   `mysa-js-sdk` for Mysa, `node-mideahvac` for Midea; SmartThings/Nest need no extra package.)
+4. **Pick the device and its role(s)** — heat, cool, fan, humidify, dehumidify, or a temp/humidity
+   sensor. A thermostat can be *both* heat and cool, and double as the zone's sensor.
+5. Repeat to keep onboarding devices, then **Save** and restart Homebridge.
+
+Prefer JSON? Everything the wizard writes is plain config — see [`examples/config.json`](examples/config.json).
+
 ## Configuration
 
 Add a `Thermocombobulator` platform block. Deep device config is easiest in the JSON config editor.
@@ -154,9 +169,15 @@ per-device `token` + `key`.
 _Local control persists without the cloud once token/key are captured. Note Midea is migrating its
 cloud token API, which may eventually affect discovery._
 
+### `nest` (native — Google Nest thermostats)
+Controls Nest via the official **Smart Device Management (SDM)** API (no extra npm dep — plain REST).
+Requires a Google **Device Access** project ($5 one-time) and OAuth credentials
+(`nestProjectId`, `nestClientId`, `nestClientSecret`, `nestRefreshToken`). Used as a heat or cool
+member (`mode`) or as a temperature/humidity sensor. The onboarding wizard captures these and lists
+your thermostats.
+
 > **Roadmap:** a `hap` adapter to control any existing HomeKit accessory directly, an `mqtt` adapter,
-> and a guided onboarding UI that logs into Mysa/Midea and auto-fills device IDs. See
-> [docs/device-integrations.md](docs/device-integrations.md).
+> and full in-UI OAuth for Nest. See [docs/device-integrations.md](docs/device-integrations.md).
 
 ## Safety & behavior notes
 

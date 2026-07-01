@@ -6,7 +6,7 @@ import type { PlatformConfig } from 'homebridge';
  * pick a display unit, but conversion happens at the edges.
  */
 
-export type AdapterType = 'http' | 'command' | 'smartthings' | 'mysa' | 'midea';
+export type AdapterType = 'http' | 'command' | 'smartthings' | 'mysa' | 'midea' | 'nest';
 
 /** How to actuate (on/off, optionally setpoint) and/or read a single physical device. */
 export interface AdapterConfig {
@@ -27,6 +27,12 @@ export interface AdapterConfig {
   // --- account credentials (mysa; midea discovery) ---
   email?: string;
   password?: string;
+
+  // --- nest (Google Smart Device Management API) ---
+  nestProjectId?: string;
+  nestClientId?: string;
+  nestClientSecret?: string;
+  nestRefreshToken?: string;
 
   // --- http ---
   onUrl?: string;
