@@ -51,8 +51,8 @@
     const SERVICES = {
       mysa:        { emoji: '🔥', label: 'Mysa thermostat', discover: '/mysa/discover',
                      fields: [['email', 'Mysa email', 'email'], ['password', 'Mysa password', 'password']] },
-      midea:       { emoji: '❄️', label: 'Midea A/C', discover: '/midea/existing', direct: true,
-                     note: 'Reuses the A/Cs you already set up in the Midea plugin — no sign-in needed.' },
+      midea:       { emoji: '❄️', label: 'Midea A/C (direct — not recommended)', discover: '/midea/existing', direct: true,
+                     note: '⚠️ This talks to the A/C directly and can conflict with the Midea plugin. Prefer 🍏 "A device already in HomeKit" to control it reliably.' },
       nest:        { emoji: '🌡️', label: 'Nest thermostat', discover: '/nest/discover',
                      note: 'Needs a Google Device Access project.',
                      fields: [['nestProjectId', 'Project ID', 'text'], ['nestClientId', 'Client ID', 'text'], ['nestClientSecret', 'Client secret', 'password'], ['nestRefreshToken', 'Refresh token', 'password']] },
@@ -307,6 +307,11 @@
 
     function addToRoom(zi, name, adapter, jobs) {
       if (!jobs.length) return homebridge.toast.error('Pick what it does');
+      // Warn: one physical device in several roles = several controllers fighting over it.
+      const climate = jobs.filter(j => ['heat', 'cool', 'fan', 'freshAir'].includes(j));
+      if (climate.length > 1) {
+        homebridge.toast.warning(`"${name}" is set to do ${climate.length} jobs (${climate.join(', ')}). One device usually does one job — an A/C's fan is already part of cooling. You can leave it, but they may conflict.`, 'Heads up');
+      }
       const zone = config.zones[zi];
       zone.devices = zone.devices || {};
       zone.sensors = zone.sensors || {};
@@ -329,28 +334,22 @@
       config.groups.push({ name: '', members: [] });
       renderGroups();
     };
+    // Race a promise against a timeout so a hung config-ui-x call can't spin forever.
+    const withTimeout = (p, ms, label) => Promise.race([
+      Promise.resolve(p),
+      new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} didn't respond after ${ms / 1000}s`)), ms)),
+    ]);
+
     document.getElementById('save').onclick = async () => {
       homebridge.showSpinner();
-      const step = (s) => { console.log('[TCB save]', s); };
       try {
-        step('reading current config');
-        const blocks = await homebridge.getPluginConfig();
-        const i = blocks.findIndex(b => b.platform === 'Thermocombobulator');
-        if (i >= 0) blocks[i] = config; else blocks.push(config);
-        step('updatePluginConfig');
-        await homebridge.updatePluginConfig(blocks);
-        step('savePluginConfig');
-        await homebridge.savePluginConfig();
-        step('verifying');
-        const after = await homebridge.getPluginConfig();
-        const saved = (after.find(b => b.platform === 'Thermocombobulator')?.zones || []).length;
-        const groups = (config.groups || []).length;
+        console.log('[TCB save] updatePluginConfig');
+        await withTimeout(homebridge.updatePluginConfig([config]), 15000, 'Updating config');
+        console.log('[TCB save] savePluginConfig');
+        await withTimeout(homebridge.savePluginConfig(), 20000, 'Saving config');
         homebridge.hideSpinner();
-        if (saved !== config.zones.length) {
-          homebridge.toast.error(`Only ${saved}/${config.zones.length} saved — some data was dropped.`, 'Partial save');
-        } else {
-          homebridge.toast.success(`Saved ${saved} thermostat(s)${groups ? ` + ${groups} group(s)` : ''}. Restart Homebridge to apply.`, 'All set');
-        }
+        const groups = (config.groups || []).length;
+        homebridge.toast.success(`Saved ${config.zones.length} thermostat(s)${groups ? ` + ${groups} group(s)` : ''}. Restart Homebridge to apply.`, 'All set');
       } catch (e) {
         homebridge.hideSpinner();
         console.error('[TCB save] FAILED:', e);
