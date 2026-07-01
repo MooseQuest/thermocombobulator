@@ -42,8 +42,9 @@
   <button class="big ghost" id="addGroup">＋ Add a group thermostat</button>
 
   <div class="footer">
-    <button class="big primary" id="save" style="flex:1">Save &amp; finish</button>
+    <button class="big primary" id="save" style="flex:1">💾 Save setup</button>
   </div>
+  <p class="sub" style="margin-top:6px"><b>Save</b> writes your setup to config. Then <b>restart Homebridge</b> (the banner that pops up, or the Homebridge menu) to <b>apply</b> it. The config editor's own Save button at the very bottom now does the same thing.</p>
 
   <script>
     // Friendly services. Each maps to a discovery endpoint + the sign-in fields it needs.
@@ -89,11 +90,18 @@
       return out;
     }
 
+    // Keep config-ui-x's in-memory model in sync with the wizard on EVERY change, so both this panel's
+    // Save button AND config-ui-x's own footer Save persist the same, correct config (never a stale wipe).
+    function sync() {
+      try { homebridge.updatePluginConfig([config]); } catch (e) { console.warn('[TCB] sync failed', e); }
+    }
+
     function render() {
       const root = document.getElementById('rooms');
       root.innerHTML = config.zones.length ? '' : '<p class="muted">No thermostats yet — add one below.</p>';
       config.zones.forEach((zone, zi) => root.appendChild(roomCard(zone, zi)));
       renderGroups();
+      sync();
     }
 
     function renderGroups() {
@@ -115,9 +123,10 @@
         <p class="muted" style="margin-top:8px">Steers these thermostats:</p>
         <div class="checks">${checks}</div>
         <button class="x" data-rmg="${gi}" style="margin-top:8px">✕ Remove group</button>`;
-      el.querySelector('.room-name').onchange = e => group.name = e.target.value;
+      el.querySelector('.room-name').onchange = e => { group.name = e.target.value; sync(); };
       el.querySelectorAll(`.gm-${gi}`).forEach(cb => cb.onchange = () => {
         group.members = [...el.querySelectorAll(`.gm-${gi}:checked`)].map(c => c.value);
+        sync();
       });
       el.querySelector(`[data-rmg="${gi}"]`).onclick = () => { config.groups.splice(gi, 1); render(); };
       return el;
@@ -139,8 +148,8 @@
         <div class="row" style="margin-top:10px"><label>Season</label><select class="season field" data-z="${zi}">${seasonOpts}</select></div>
         <div id="wiz-${zi}"></div>
         <button class="x" data-rmz="${zi}" style="margin-top:10px">✕ Remove thermostat</button>`;
-      el.querySelector('.room-name').onchange = e => zone.name = e.target.value;
-      el.querySelector('.season').onchange = e => { zone.control = zone.control || {}; zone.control.season = e.target.value; };
+      el.querySelector('.room-name').onchange = e => { zone.name = e.target.value; sync(); };
+      el.querySelector('.season').onchange = e => { zone.control = zone.control || {}; zone.control.season = e.target.value; sync(); };
       el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeThing(b.dataset.rm));
       el.querySelector(`[data-add="${zi}"]`).onclick = () => pickService(zi);
       el.querySelector(`[data-rmz="${zi}"]`).onclick = () => removeThermostat(zi);
@@ -321,22 +330,31 @@
       renderGroups();
     };
     document.getElementById('save').onclick = async () => {
+      homebridge.showSpinner();
+      const step = (s) => { console.log('[TCB save]', s); };
       try {
+        step('reading current config');
         const blocks = await homebridge.getPluginConfig();
         const i = blocks.findIndex(b => b.platform === 'Thermocombobulator');
-        i >= 0 ? blocks[i] = config : blocks.push(config);
+        if (i >= 0) blocks[i] = config; else blocks.push(config);
+        step('updatePluginConfig');
         await homebridge.updatePluginConfig(blocks);
+        step('savePluginConfig');
         await homebridge.savePluginConfig();
-        // Verify it actually persisted (config-ui-x can silently strip against the schema).
+        step('verifying');
         const after = await homebridge.getPluginConfig();
         const saved = (after.find(b => b.platform === 'Thermocombobulator')?.zones || []).length;
+        const groups = (config.groups || []).length;
+        homebridge.hideSpinner();
         if (saved !== config.zones.length) {
           homebridge.toast.error(`Only ${saved}/${config.zones.length} saved — some data was dropped.`, 'Partial save');
         } else {
-          homebridge.toast.success(`Saved ${saved} thermostat(s). Restart Homebridge to apply.`, 'All set');
+          homebridge.toast.success(`Saved ${saved} thermostat(s)${groups ? ` + ${groups} group(s)` : ''}. Restart Homebridge to apply.`, 'All set');
         }
       } catch (e) {
-        homebridge.toast.error(e.message || String(e), 'Save failed');
+        homebridge.hideSpinner();
+        console.error('[TCB save] FAILED:', e);
+        homebridge.toast.error((e && (e.message || e.error || JSON.stringify(e))) || 'Unknown error', 'Save failed');
       }
     };
 
