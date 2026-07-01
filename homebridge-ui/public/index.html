@@ -137,12 +137,22 @@
         <div class="things">${things || '<span class="muted">Nothing added yet.</span>'}</div>
         <button class="big ghost" data-add="${zi}">＋ Add a device it controls</button>
         <div class="row" style="margin-top:10px"><label>Season</label><select class="season field" data-z="${zi}">${seasonOpts}</select></div>
-        <div id="wiz-${zi}"></div>`;
+        <div id="wiz-${zi}"></div>
+        <button class="x" data-rmz="${zi}" style="margin-top:10px">✕ Remove thermostat</button>`;
       el.querySelector('.room-name').onchange = e => zone.name = e.target.value;
       el.querySelector('.season').onchange = e => { zone.control = zone.control || {}; zone.control.season = e.target.value; };
       el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => removeThing(b.dataset.rm));
       el.querySelector(`[data-add="${zi}"]`).onclick = () => pickService(zi);
+      el.querySelector(`[data-rmz="${zi}"]`).onclick = () => removeThermostat(zi);
       return el;
+    }
+
+    function removeThermostat(zi) {
+      const name = config.zones[zi]?.name;
+      config.zones.splice(zi, 1);
+      // Drop it from any group that steered it, so we don't leave a dangling member.
+      if (name) config.groups.forEach(g => { if (g.members) g.members = g.members.filter(m => m !== name); });
+      render();
     }
 
     function removeThing(key) {
