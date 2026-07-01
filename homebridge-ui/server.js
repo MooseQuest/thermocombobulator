@@ -99,7 +99,12 @@ class UiServer extends HomebridgePluginUiServer {
     try { d.stop(); } catch { /* best effort */ }
     let mainPin;
     try { mainPin = JSON.parse(fs.readFileSync(path.join(this.homebridgeStoragePath || '/var/lib/homebridge', 'config.json'), 'utf8')).bridge?.pin; } catch { /* none */ }
-    const list = [...found.values()].map((b) => ({ ...b, suggestedPin: mainPin }));
+    // Homebridge hubs first (they hold the reusable plugin devices — A/Cs, etc.); individual native
+    // devices (Mysa/eufy, usually already in Apple Home) after. Then alphabetical.
+    const isHub = (n) => (/homebridge/i.test(n) ? 1 : 0);
+    const list = [...found.values()]
+      .map((b) => ({ ...b, suggestedPin: mainPin, hub: isHub(b.name) === 1 }))
+      .sort((a, b) => (isHub(b.name) - isHub(a.name)) || String(a.name).localeCompare(String(b.name)));
     if (list.length) { try { fs.writeFileSync(cacheFile, JSON.stringify({ at: Date.now(), list })); } catch { /* best effort */ } }
     return list;
   }

@@ -257,8 +257,8 @@
           const bridges = await withTimeout(homebridge.request('/hap/discover', {}), 30000, 'Finding hubs');
           if (!bridges.length) return res.innerHTML = '<p class="muted">No HomeKit hubs found on the network.</p>';
           window[`_hb${zi}`] = bridges;
-          res.innerHTML = `<p class="muted" style="margin-top:12px">Pick the hub, then enter its HomeKit setup PIN (Homebridge → that bridge → settings):</p>
-            <div class="pick">${bridges.map((b, i) => `<label><input type="radio" name="hb${zi}" value="${i}" ${i ? '' : 'checked'}> <b>${b.name}</b> <span class="muted">${b.model || ''}${b.paired === false ? ' · unpaired' : ''}</span></label>`).join('')}</div>
+          res.innerHTML = `<p class="muted" style="margin-top:12px">Pick a <b>🏠 hub</b> to reuse its devices, then enter its HomeKit setup PIN (Homebridge → that bridge → settings). <br>Tip: for a Mysa, go back and use the 🔥 Mysa option instead — those are native devices already in your Home.</p>
+            <div class="pick">${bridges.map((b, i) => `<label><input type="radio" name="hb${zi}" value="${i}" ${i ? '' : 'checked'}> <b>${b.hub ? '🏠 ' : ''}${b.name}</b> <span class="muted">${b.model || ''}${b.paired === false ? ' · unpaired' : ''}</span></label>`).join('')}</div>
             <input class="field" id="hpin-${zi}" placeholder="Setup PIN (e.g. 031-45-154)" value="${bridges[0].suggestedPin || ''}">
             <button class="big primary" id="hpair-${zi}">Pair &amp; list devices</button>`;
           document.getElementById(`hpair-${zi}`).onclick = () => hapPair(zi);
