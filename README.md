@@ -125,7 +125,38 @@ real hardware — pick whatever your device speaks.
 | `token` | Per-adapter token (else the platform `smartThingsToken`). |
 | `component` | Defaults to `main`. |
 
-> **Roadmap:** a `hap` adapter to control any existing HomeKit accessory directly, and an `mqtt` adapter.
+### `mysa` (native — Mysa smart thermostats)
+Controls Mysa baseboard/floor thermostats via the community [`mysa-js-sdk`](https://github.com/bourquep/mysa-js-sdk)
+(cloud; AWS Cognito). Install the optional SDK: `npm install mysa-js-sdk`.
+
+| Field | Use |
+|---|---|
+| `email`, `password` | Your Mysa account (a session is cached, so this is used sparingly). |
+| `deviceId` | The Mysa device ID (from onboarding / `getDevices`). |
+| `sensorProperty` | `temperature` (default) or `humidity` when used as a sensor. |
+
+Turning it on drives the thermostat in **heat** mode at its current/target setpoint; off sets mode `off`.
+_Unofficial API — may change. If your model supports **Matter**, that's the more durable path._
+
+### `midea` (native — Midea window/portable A/C)
+Controls Midea (and rebranded Comfee/Carrier/etc.) A/C over the **local network** via
+[`node-mideahvac`](https://github.com/reneklootwijk/node-mideahvac). Install the optional SDK:
+`npm install node-mideahvac`, then run its `midea-discover` (with an **MSmartHome** account) to get the
+per-device `token` + `key`.
+
+| Field | Use |
+|---|---|
+| `host` | The A/C's LAN IP. |
+| `deviceId`, `token`, `key` | From `midea-discover`. |
+| `mode` | Mode to set when turned on: `cool` (typical), `heat`, `auto`, `fan_only`, `dry`. |
+| `sensorProperty` | `temperature` (default) or `humidity` when used as a sensor. |
+
+_Local control persists without the cloud once token/key are captured. Note Midea is migrating its
+cloud token API, which may eventually affect discovery._
+
+> **Roadmap:** a `hap` adapter to control any existing HomeKit accessory directly, an `mqtt` adapter,
+> and a guided onboarding UI that logs into Mysa/Midea and auto-fills device IDs. See
+> [docs/device-integrations.md](docs/device-integrations.md).
 
 ## Safety & behavior notes
 

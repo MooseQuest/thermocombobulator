@@ -6,11 +6,27 @@ import type { PlatformConfig } from 'homebridge';
  * pick a display unit, but conversion happens at the edges.
  */
 
-export type AdapterType = 'http' | 'command' | 'smartthings';
+export type AdapterType = 'http' | 'command' | 'smartthings' | 'mysa' | 'midea';
 
 /** How to actuate (on/off, optionally setpoint) and/or read a single physical device. */
 export interface AdapterConfig {
   type: AdapterType;
+
+  // --- mysa (cloud, via mysa-js-sdk) ---
+  // deviceId + email/password below. When turned on, drives the thermostat in heat mode.
+
+  // --- midea (local LAN, via node-mideahvac) ---
+  host?: string;
+  /** Local auth key from `midea-discover` (paired with token + deviceId). */
+  key?: string;
+  /** Mode to set when the device is turned on (e.g. 'cool' for a window A/C). */
+  mode?: 'cool' | 'heat' | 'auto' | 'fan_only' | 'dry';
+  /** Which reading a sensor returns: 'temperature' | 'humidity' (adapter-specific default). */
+  sensorProperty?: 'temperature' | 'humidity';
+
+  // --- account credentials (mysa; midea discovery) ---
+  email?: string;
+  password?: string;
 
   // --- http ---
   onUrl?: string;
