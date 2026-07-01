@@ -45,8 +45,8 @@
     const SERVICES = {
       mysa:        { emoji: '🔥', label: 'Mysa thermostat', discover: '/mysa/discover',
                      fields: [['email', 'Mysa email', 'email'], ['password', 'Mysa password', 'password']] },
-      midea:       { emoji: '❄️', label: 'Midea / window A/C', discover: '/midea/discover',
-                     fields: [['user', 'MSmartHome email', 'email'], ['password', 'MSmartHome password', 'password']] },
+      midea:       { emoji: '❄️', label: 'Midea A/C', discover: '/midea/existing', direct: true,
+                     note: 'Reuses the A/Cs you already set up in the Midea plugin — no sign-in needed.' },
       nest:        { emoji: '🌡️', label: 'Nest thermostat', discover: '/nest/discover',
                      note: 'Needs a Google Device Access project.',
                      fields: [['nestProjectId', 'Project ID', 'text'], ['nestClientId', 'Client ID', 'text'], ['nestClientSecret', 'Client secret', 'password'], ['nestRefreshToken', 'Refresh token', 'password']] },
@@ -140,10 +140,10 @@
         document.getElementById(`mback-${zi}`).onclick = () => pickService(zi);
         return;
       }
-      w.innerHTML = `<div class="step"><h4>${s.emoji} Sign in to ${s.label}</h4>
+      w.innerHTML = `<div class="step"><h4>${s.emoji} ${s.direct ? `Find your ${s.label}s` : `Sign in to ${s.label}`}</h4>
         ${s.note ? `<p class="muted">${s.note}</p>` : ''}
-        ${s.fields.map(([k, ph, t]) => `<input class="field" id="f-${zi}-${k}" type="${t}" placeholder="${ph}">`).join('')}
-        <button class="big primary" id="find-${zi}">Find my devices</button>
+        ${(s.fields || []).map(([k, ph, t]) => `<input class="field" id="f-${zi}-${k}" type="${t}" placeholder="${ph}">`).join('')}
+        <button class="big primary" id="find-${zi}">${s.direct ? 'Find them' : 'Find my devices'}</button>
         <button class="big ghost" id="back-${zi}">← Back</button>
         <div id="res-${zi}"></div></div>`;
       document.getElementById(`find-${zi}`).onclick = () => findDevices(zi, key);
@@ -152,7 +152,7 @@
 
     async function findDevices(zi, key) {
       const s = SERVICES[key];
-      const payload = {}; s.fields.forEach(([k]) => payload[k] = val(`f-${zi}-${k}`));
+      const payload = {}; (s.fields || []).forEach(([k]) => payload[k] = val(`f-${zi}-${k}`));
       homebridge.showSpinner();
       try {
         const devices = await homebridge.request(s.discover, payload);

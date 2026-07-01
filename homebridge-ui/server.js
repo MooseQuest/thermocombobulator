@@ -23,6 +23,7 @@ class UiServer extends HomebridgePluginUiServer {
     super();
 
     this.onRequest('/mysa/discover', (p) => this.wrap('mysa', () => this.mysa(p)));
+    this.onRequest('/midea/existing', (p) => this.wrap('midea-existing', () => this.mideaExisting(p)));
     this.onRequest('/midea/discover', (p) => this.wrap('midea', () => this.midea(p)));
     this.onRequest('/nest/discover', (p) => this.wrap('nest', () => this.nest(p)));
     this.onRequest('/smartthings/discover', (p) => this.wrap('smartthings', () => this.smartthings(p)));
@@ -90,7 +91,47 @@ class UiServer extends HomebridgePluginUiServer {
       }));
   }
 
-  // --- Midea: run the bundled midea-discover CLI, parse devices (host/id/token/key) ---
+  // --- Midea (EASY PATH): reuse the A/Cs you already set up in homebridge-midea-platform ---
+  // Reads that plugin's cached id/token/key, then does a credential-free LOCAL scan for each IP.
+  async mideaExisting() {
+    const accDir = path.join(this.homebridgeStoragePath || '/var/lib/homebridge', 'accessories');
+    const cached = [];
+    let files = [];
+    try { files = fs.readdirSync(accDir).filter((f) => f.startsWith('cachedAccessories')); } catch { /* none */ }
+    for (const f of files) {
+      let arr;
+      try { arr = JSON.parse(fs.readFileSync(path.join(accDir, f), 'utf8')); } catch { continue; }
+      if (!Array.isArray(arr)) continue;
+      for (const a of arr) {
+        const c = a && a.context;
+        if (a && a.plugin === 'homebridge-midea-platform' && c && c.token && c.key && c.id) {
+          cached.push({ id: String(c.id), name: a.displayName || `Midea ${String(c.id).slice(-4)}`, token: c.token, key: c.key, model: c.model });
+        }
+      }
+    }
+    if (!cached.length) throw new Error('No Midea A/Cs found. Set them up in the homebridge-midea-platform plugin first, then come back.');
+
+    // Local-only scan (no cloud login) just to learn each A/C's current IP.
+    const bin = path.join(__dirname, '..', 'node_modules', '.bin', 'midea-discover');
+    const scan = await new Promise((resolve) =>
+      exec(`${JSON.stringify(process.execPath)} ${JSON.stringify(bin)}`, { timeout: 30000, maxBuffer: 1 << 20 }, (e, so) => resolve(so || '')));
+    const ipById = {};
+    for (const b of scan.split(/Appliance\s+\d+:/i).slice(1)) {
+      const id = (/-\s*Id:\s*(.+)/i.exec(b)?.[1] || '').trim();
+      const host = (/-\s*Host:\s*(.+)/i.exec(b)?.[1] || '').trim();
+      if (id && host) ipById[id] = host;
+    }
+    const out = cached
+      .filter((d) => ipById[d.id])
+      .map((d) => ({
+        id: d.id, name: d.name, model: d.model || 'Midea A/C', role: 'cool',
+        config: { type: 'midea', host: ipById[d.id], deviceId: d.id, token: d.token, key: d.key, mode: 'cool' },
+      }));
+    if (!out.length) throw new Error('Found your Midea A/Cs in the other plugin, but none answered on the network right now.');
+    return out;
+  }
+
+  // --- Midea (cloud sign-in fallback): run midea-discover with MSmartHome creds ---
   async midea({ user, password }) {
     if (!user || !password) throw new Error('Midea (MSmartHome) email and password are required.');
     const bin = path.join(__dirname, '..', 'node_modules', '.bin', 'midea-discover');
