@@ -29,9 +29,32 @@ while heat is the active temperature system.
   outside) is a *temperature-layer* optimization. Plain fresh-air ventilation is a *ventilation-layer*
   function the user can turn on any time, cooling or not.
 
+## Control philosophy: delegate, don't force
+
+The plugin **coordinates**; it does not micro-manage temperature. How a device is driven depends on
+whether it can regulate itself:
+
+- **Regulating devices** (`supportsSetpoint`: Mysa, Nest, Midea A/C) — the plugin **sets mode +
+  setpoint and arms** the device, then lets the device's own thermostat hold the temperature. It does
+  **not** poll-and-toggle to force a number. Example: target 72°F, room 70°F, summer → arm the A/C at
+  72 and leave it; its own thermoregulation won't chill to 70.
+- **Dumb devices** (no setpoint: a space heater on a smart plug, a basic fan) — the plugin does the
+  regulating itself, bang-bang against the room sensor with hysteresis, because the device can't.
+
+### Auto = a comfort range (Nest-style)
+Auto is a **range**, not a point: a heat floor (e.g. 68°F) and a cool ceiling (e.g. 78°F). Heat only
+defends the floor; cool only defends the ceiling; between them, idle. These are HomeKit's two
+HeaterCooler thresholds. A real deadband (floor ≪ ceiling) means heat and cool **physically cannot
+run at once**, so the range itself prevents competing devices; season then disarms a whole side (no
+baseboard armed in deep summer). Regulating devices get programmed to the relevant bound (heat→floor,
+cool→ceiling); dumb devices bang-bang around it.
+
 ## Build status
 - ✅ Layer 1 temperature: heat⊕cool interlock, supplemental staging, hysteresis, **seasonal changeover**,
-  free-cooling, capability-aware modes.
+  free-cooling, capability-aware modes, Nest-style range (two thresholds).
+- ⏳ **Delegate-don't-force revision:** regulating devices (supportsSetpoint) get programmed
+  (mode+setpoint+arm) instead of bang-banged; only dumb devices are bang-banged. (Engine currently
+  bang-bangs everything — to revise before any regulating device is driven live.)
 - ✅ Layer 4 humidity: auto humidify/dehumidify when configured (display-only otherwise).
 - ⏳ Layer 2 ventilation/fresh-air as an independent `Fanv2` (incl. A/C vent mode) — not season-gated.
 - ⏳ Layer 3 air purification: VeSync adapter + `purify` role → `AirPurifier` service.
