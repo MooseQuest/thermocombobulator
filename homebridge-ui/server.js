@@ -12,6 +12,23 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
+// Cache the (credential-free) local Midea scan so repeat clicks reuse it instead of re-scanning/hanging.
+let _mideaScan = { at: 0, ipById: {} };
+async function mideaLocalScan(bin) {
+  if (Date.now() - _mideaScan.at < 60000 && Object.keys(_mideaScan.ipById).length) return _mideaScan.ipById;
+  const out = await new Promise((resolve) => {
+    exec(`${JSON.stringify(process.execPath)} ${JSON.stringify(bin)}`, { timeout: 25000, killSignal: 'SIGKILL', maxBuffer: 1 << 20 }, (_e, so) => resolve(so || ''));
+  });
+  const ipById = {};
+  for (const b of out.split(/Appliance\s+\d+:/i).slice(1)) {
+    const id = (/-\s*Id:\s*(.+)/i.exec(b)?.[1] || '').trim();
+    const host = (/-\s*Host:\s*(.+)/i.exec(b)?.[1] || '').trim();
+    if (id && host) ipById[id] = host;
+  }
+  _mideaScan = { at: Date.now(), ipById };
+  return ipById;
+}
+
 /**
  * Custom-UI server for Thermocombobulator onboarding. It runs the vendor logins/discovery
  * SERVER-SIDE (inside Homebridge), so the user's credentials go from their browser straight to
@@ -95,9 +112,9 @@ class UiServer extends HomebridgePluginUiServer {
   // Reads that plugin's cached id/token/key, then does a credential-free LOCAL scan for each IP.
   async mideaExisting() {
     const accDir = path.join(this.homebridgeStoragePath || '/var/lib/homebridge', 'accessories');
-    const cached = [];
+    const byId = new Map();
     let files = [];
-    try { files = fs.readdirSync(accDir).filter((f) => f.startsWith('cachedAccessories')); } catch { /* none */ }
+    try { files = fs.readdirSync(accDir).filter((f) => f.startsWith('cachedAccessories') && !f.includes('backup')); } catch { /* none */ }
     for (const f of files) {
       let arr;
       try { arr = JSON.parse(fs.readFileSync(path.join(accDir, f), 'utf8')); } catch { continue; }
@@ -105,23 +122,16 @@ class UiServer extends HomebridgePluginUiServer {
       for (const a of arr) {
         const c = a && a.context;
         if (a && a.plugin === 'homebridge-midea-platform' && c && c.token && c.key && c.id) {
-          cached.push({ id: String(c.id), name: a.displayName || `Midea ${String(c.id).slice(-4)}`, token: c.token, key: c.key, model: c.model });
+          const id = String(c.id);
+          if (!byId.has(id)) byId.set(id, { id, name: a.displayName || `Midea ${id.slice(-4)}`, token: c.token, key: c.key, model: c.model });
         }
       }
     }
-    if (!cached.length) throw new Error('No Midea A/Cs found. Set them up in the homebridge-midea-platform plugin first, then come back.');
+    if (!byId.size) throw new Error('No Midea A/Cs found. Set them up in the homebridge-midea-platform plugin first, then come back.');
 
-    // Local-only scan (no cloud login) just to learn each A/C's current IP.
     const bin = path.join(__dirname, '..', 'node_modules', '.bin', 'midea-discover');
-    const scan = await new Promise((resolve) =>
-      exec(`${JSON.stringify(process.execPath)} ${JSON.stringify(bin)}`, { timeout: 30000, maxBuffer: 1 << 20 }, (e, so) => resolve(so || '')));
-    const ipById = {};
-    for (const b of scan.split(/Appliance\s+\d+:/i).slice(1)) {
-      const id = (/-\s*Id:\s*(.+)/i.exec(b)?.[1] || '').trim();
-      const host = (/-\s*Host:\s*(.+)/i.exec(b)?.[1] || '').trim();
-      if (id && host) ipById[id] = host;
-    }
-    const out = cached
+    const ipById = await mideaLocalScan(bin);
+    const out = [...byId.values()]
       .filter((d) => ipById[d.id])
       .map((d) => ({
         id: d.id, name: d.name, model: d.model || 'Midea A/C', role: 'cool',

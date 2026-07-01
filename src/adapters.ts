@@ -135,9 +135,26 @@ class SmartThingsAdapter implements Adapter {
 
 /** Shared, memoised Mysa clients keyed by account email (login is expensive; SDK caches session). */
 const mysaClients = new Map<string, Promise<MysaClientLike>>();
+interface MysaStatus { deviceId: string; temperature?: number; humidity?: number; setPoint?: number }
 interface MysaClientLike {
   setDeviceState(deviceId: string, temperatureC: number | undefined, mode: 'heat' | 'off'): Promise<void>;
   getDevices(): Promise<Record<string, Record<string, unknown>>>;
+  emitter: { on(event: string, handler: (...args: unknown[]) => void): void };
+  startRealtimeUpdates(deviceId: string): Promise<void>;
+}
+
+// Live Mysa readings arrive via the realtime `statusChanged` feed (getDevices only returns config).
+const mysaStatus = new Map<string, MysaStatus>();
+const mysaRealtime = new Set<string>();
+async function ensureMysaRealtime(client: MysaClientLike, deviceId: string): Promise<void> {
+  if (mysaRealtime.has(deviceId)) return;
+  mysaRealtime.add(deviceId);
+  client.emitter.on('statusChanged', (s: unknown) => {
+    const status = s as MysaStatus;
+    if (status && status.deviceId) mysaStatus.set(status.deviceId, status);
+  });
+  try { await client.startRealtimeUpdates(deviceId); }
+  catch (e) { mysaRealtime.delete(deviceId); throw e; }
 }
 function mysaClient(email: string, password: string): Promise<MysaClientLike> {
   let p = mysaClients.get(email);
@@ -179,13 +196,13 @@ class MysaAdapter implements Adapter {
 
   async read(): Promise<number> {
     const c = await this.client();
-    const devices = await c.getDevices();
-    const d = devices?.[this.cfg.deviceId!] ?? {};
+    await ensureMysaRealtime(c, this.cfg.deviceId!);
+    let status = mysaStatus.get(this.cfg.deviceId!);
+    if (!status) { await new Promise((r) => setTimeout(r, 3000)); status = mysaStatus.get(this.cfg.deviceId!); }
+    if (!status) throw new Error(`mysa read: no realtime status yet for ${this.cfg.deviceId} (warming up)`);
     const prop = this.cfg.sensorProperty ?? 'temperature';
-    const v = prop === 'humidity'
-      ? (d.Humidity ?? d.humidity)
-      : (d.CurrentTemperature ?? d.Temperature ?? d.temperature);
-    if (v == null) throw new Error(`mysa read: no ${prop} for device ${this.cfg.deviceId}`);
+    const v = prop === 'humidity' ? status.humidity : status.temperature;
+    if (v == null) throw new Error(`mysa read: no ${prop} in status`);
     return Number(v);
   }
 }
