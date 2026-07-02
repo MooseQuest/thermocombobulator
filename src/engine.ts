@@ -232,20 +232,18 @@ export class ClimateEngine {
     };
   }
 
-  // Send-on-change: remember the last command sent to each device so we only actuate on a real
-  // change (not every 30s tick) — avoids hammering cloud APIs and hitting rate limits. Re-asserted
-  // every REASSERT_MS as a safety net in case a device drifted or was changed out from under us.
-  private lastCmd = new Map<Adapter, { sig: string; at: number }>();
+  // Send-on-change: remember the last command sent to each device and only actuate when the desired
+  // state actually CHANGES — set it once, then leave the device (and any manual changes you make)
+  // alone. Regulating devices self-regulate, so there's no need to re-assert on a timer. A failed
+  // command isn't cached, so it retries until it lands; a restart re-sends once (cache starts empty).
+  private lastCmd = new Map<Adapter, { sig: string }>();
   private lastWarn = new Map<Adapter, string>();
-  private static readonly REASSERT_MS = 10 * 60 * 1000;
 
   private async drive(a: Adapter, sig: string, act: () => Promise<void>): Promise<void> {
-    const prev = this.lastCmd.get(a);
-    const now = Date.now();
-    if (prev && prev.sig === sig && now - prev.at < ClimateEngine.REASSERT_MS) return;
+    if (this.lastCmd.get(a)?.sig === sig) return;
     try {
       await act();
-      this.lastCmd.set(a, { sig, at: now });
+      this.lastCmd.set(a, { sig });
       this.lastWarn.delete(a); // recovered — allow future warnings
     } catch (e) {
       // A failed command retries each tick; warn once per distinct failure, then stay quiet.
